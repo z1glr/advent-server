@@ -1,0 +1,5 @@
+GET http://localhost:61016/api/welcome
+
+###
+
+GET http://localhost:61016/api/post

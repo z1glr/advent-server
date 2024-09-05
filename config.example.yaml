@@ -1,0 +1,12 @@
+log_level: ALL
+database:
+  host: localhost
+  user: USERNAME
+  password: PASSWORD
+  database: DATABASENAME
+client_session:
+  jwt_secret: SECRET
+  expire: 7d
+setup:
+  days: 24
+  start: "2024-12-01"

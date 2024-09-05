@@ -1,0 +1,6 @@
+{
+	"watch": ["src", "config.yaml"],
+	"ext": "ts,json,yaml",
+	"exec": "etsc && node ./dist/setup_database.js",
+	"legacyWatch": true
+}
