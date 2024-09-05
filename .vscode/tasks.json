@@ -7,6 +7,6 @@
 			"problemMatcher": [],
 			"label": "npm: dev",
 			"detail": "nodemon server.js"
-		}
+		},
 	]
 }

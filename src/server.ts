@@ -4,51 +4,60 @@ import mysql from "promise-mysql";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 
-import Config, { HTTPStatus } from "./config";
+import Config from "./config";
 import { logger } from "./logger";
+import { HTTPStatus, iiaf_wrap, query_is_string } from "./lib";
 
-// TODO: add res.status().send("TEXT HERE");
 // TODO: add logging
-// TODO: only allow posts-retrieve up to current date (maybe client-side too for cursor / design, server returns 403)
 // TODO: catch more stuff
-// TODO: user-delte: delete comments
+// TODO: move listen-port to config
+// TODO: remove title from posts, use markdown instead
 
+// data stored in the JSON webtoken
 interface JWT {
 	uid: number;
 }
 
+// data stored in the session-cokie
 interface SessionCookie {
-	uid: number;
 	name: string;
 	admin: boolean;
+	uid: number;
 	token: string;
 }
 
-(async () => {
+type Body = Record<string, unknown>;
+
+interface PostsEntry {
+	pid: number;
+	date: string;
+	title: string;
+	content: string;
+}
+
+// wrap in immediately invoked asynchronous function (IIAF) to enable
+void (async () => {
 	const app = express();
 
-	// app.use(function(req, res, next) {
-	// 	res.header("Access-Control-Allow-Origin", "http://172.25.220.64:5173");
-	// 	res.header("Access-Control-Allow-Methods", "POST,GET,DELETE");
-	// 	res.header("Access-Control-Allow-Headers", "Origin,Content-Type");
-	// 	res.header("Access-Control-Allow-Credentials", "true");
-	// 	next();
-	// });
 	app.use(express.json());
 	app.use(cookieParser());
-	
+
 	// connect to the database
 	const db = await mysql.createConnection(Config.database);
 	logger.log("Connected to database");
-	
+
 	type Methods = "GET" | "POST" | "DELETE";
-	type Message = { status: number; } & Partial<{ message?: string; json: never; } | { json?: object; message: never; }>;
+	type Message = { status: number } & Partial<
+		{ message?: string; json: never } | { json?: object; message: never }
+	>;
 
 	type API = { [K in Methods]: Record<string, (req: Request, res: Response) => Promise<Message>> };
 	const api: API = {
+		/* eslint-disable @typescript-eslint/naming-convention */
 		GET: {
 			users: get_users,
 			posts: get_posts,
+			"posts/config": get_post_config,
 			logout,
 			comments: get_comments
 		},
@@ -63,98 +72,171 @@ interface SessionCookie {
 			comment: delete_comment,
 			user: delete_user
 		}
+		/* eslint-enable @typescript-eslint/naming-convention */
 	};
 
 	// add the listeners
 	Object.entries(api).forEach(([method, paths]) => {
-		const function_map: { [K in Methods]: (path: string, callback: (req: Request, res: Response) => void ) => void}  = {
+		// map the individual method-functions into an object
+		const function_map: {
+			[K in Methods]: (path: string, callback: (req: Request, res: Response) => void) => void;
+		} = {
+			/* eslint-disable @typescript-eslint/naming-convention */
 			GET: app.get.bind(app),
 			POST: app.post.bind(app),
 			DELETE: app.delete.bind(app)
+			/* eslint-enable @typescript-eslint/naming-convention */
 		};
 
+		// iterate over the different specified methods
 		Object.entries(paths).forEach(([path, func]) => {
-			function_map[method as Methods]("/api/" + path, async (req, res) => {
-				logger.debug(`HTTP ${method} request: ${req.url}`)
+			// register the individual end-points
+			function_map[method as Methods]("/api/" + path, (req, res) => {
+				logger.log(`HTTP ${method} request: ${req.url}`);
 
-				const check_perm_res = await check_permission(req, res);
+				//check wether the session-token is valid
+				const check_perm_res = check_permission(req);
 
-				if (check_perm_res) {
-					const response_values = await func(req, res);
+				iiaf_wrap(async () => {
+					// if the session-token is valid, proceed with the handler-function
+					if (check_perm_res) {
+						const response_values = await func(req, res);
 
-					res.status(response_values.status);
-
-					if (response_values.json !== undefined) {
-						res.json(response_values.json);
+						send_response(res, response_values);
 					} else {
-						res.send(response_values.message);
+						// invalid session-token
+						send_response(res, { status: HTTPStatus.Forbidden });
 					}
-				}
+				});
 			});
-			logger.trace(`Added API-endpoint for '/api/${path}'`)
 		});
 	});
+
 	// handle methods without session-token seperately
-	app.get("/api/welcome", async (req, res) => {
-		welcome(req, res);
+	app.get("/api/welcome", (req, res) => {
+		logger.log("HTTP get request: /api/welcome");
+
+		send_response(res, welcome(req));
 	});
-	app.post("/api/login", async (req, res) => {
-		login(req, res);
+	app.post("/api/login", (req, res) => {
+		iiaf_wrap(async () => {
+			logger.log("HTTP post request: /api/login");
+
+			send_response(res, await login(req, res));
+		});
 	});
 
-	async function check_permission(req: Request, res: Response): Promise<boolean> {
-		const session: SessionCookie | undefined = req.cookies.session;
+	app.listen(61016);
+	console.log("added API-endpoints");
+
+	/**
+	 * populate and send the response
+	 * @param res Reponse to be populated
+	 * @param message Data to be send
+	 */
+	function send_response(res: Response, message: Message) {
+		// attach the returned status
+		res.status(message.status);
+
+		// send (if available) the JSON object
+		if (message.json !== undefined) {
+			res.json(message.json);
+		} else {
+			// send with the message
+			res.send(message.message);
+		}
+	}
+
+	/**
+	 * Extract the session-cookie from the request
+	 * @param req Request with session-cookie
+	 * @returns Session-cokie or undefined, if there is no session-cookie
+	 */
+	function extract_session_cookie(req: Request): SessionCookie | undefined {
+		return req.cookies.session as SessionCookie | undefined;
+	}
+
+	/**
+	 * Check wether the request has a valid session-token
+	 * @param req Request with the session-token
+	 * @returns wether the request has a valid session token
+	 */
+	function check_permission(req: Request): boolean {
+		const session = extract_session_cookie(req);
 
 		if (session !== undefined) {
 			try {
 				jwt.verify(session.token, Config.jwt_secret);
 
 				return true;
-			} catch { }
+			} catch {
+				/* empty */
+			}
 		}
-
-		res.status(HTTPStatus.Unauthorized).send("invalid session-token");
 
 		return false;
 	}
-	
+
+	/**
+	 * Check wether the request came from an admin
+	 * @param req Request with the session-cookie
+	 * @returns wether the request came from an admin
+	 */
 	async function check_admin(req: Request): Promise<boolean> {
 		try {
-			const uid = await extract_uid(req);
-			const data = await db.query("SELECT admin FROM users WHERE uid = ?", [uid]);
+			const uid = extract_uid(req);
+			const data: { admin: number }[] = await db.query("SELECT admin FROM users WHERE uid = ?", [
+				uid
+			]);
 
-			return data[0].admin === 1;
-		}  catch {
+			return data?.[0].admin === 1;
+		} catch {
 			return false;
 		}
 	}
 
-	async function extract_uid(req: Request): Promise<number> {
-		return (jwt.verify(req.cookies.session.token, Config.jwt_secret) as JWT).uid
+	/**
+	 * Extract the uid from a token
+	 * @param token
+	 * @returns uid
+	 */
+	function extract_uid(req: Request): number | null {
+		if (typeof req.cookies === "object" && typeof req.cookies.session === "string") {
+			const token: string = req.cookies.session;
+
+			return (jwt.verify(token, Config.jwt_secret) as JWT).uid;
+		} else {
+			return null;
+		}
 	}
 
-	async function get_users(req: Request, res: Response): Promise<Message> {
-		return send_users(res);
+	async function get_users(): Promise<Message> {
+		return send_users();
 	}
-	
-	async function add_user(req: Request, res: Response): Promise<Message> {
-		if (typeof req.body.user === "string" && typeof req.body.password === "string") {
+
+	async function add_user(req: Request): Promise<Message> {
+		const body = req.body as Body;
+
+		if (typeof body.user === "string" && typeof body.password === "string") {
 			try {
 				// check, wether the user already exists
-				const user_available = (await db.query("SELECT 1 FROM users WHERE name = ? LIMIT 1", [req.body.user])).length === 0;
+				const data: 1[] = await db.query("SELECT 1 FROM users WHERE name = ?", [body.user]);
 
-				if (user_available) {
+				if (data.length === 0) {
 					const salt = await bcrypt.genSalt();
-		
-					const password_hash = await bcrypt.hash(req.body.password, salt);
-					
-					await db.query("INSERT INTO users (name, password) VALUES (?, ?)", [req.body.user, password_hash]);
 
-					return send_users(res);
+					const password_hash = await bcrypt.hash(body.password, salt);
+
+					await db.query("INSERT INTO users (name, password) VALUES (?, ?)", [
+						body.user,
+						password_hash
+					]);
+
+					return send_users();
 				} else {
 					return { status: HTTPStatus.Conflict, message: "user already exists" };
 				}
-			} catch (error) {
+			} catch {
 				return { status: HTTPStatus.InternalServerError };
 			}
 		} else {
@@ -162,28 +244,39 @@ interface SessionCookie {
 		}
 	}
 
-	async function modify_user(req: Request, res: Response): Promise<Message> {
+	async function modify_user(req: Request): Promise<Message> {
 		if (await check_admin(req)) {
-			if (queryIsString(req.query.uid) && typeof req.body.admin === "boolean" && typeof req.body.password === "string") {
+			const body = req.body as Body;
+			if (
+				query_is_string(req.query.uid) &&
+				typeof body.admin === "boolean" &&
+				typeof body.password === "string"
+			) {
 				// if it is the admin, user overwrite 'admin' to true
-				const user = await db.query("SELECT name FROM users WHERE uid = ?", [req.query.uid]);
+				const user: { name: string }[] = await db.query("SELECT name FROM users WHERE uid = ?", [
+					req.query.uid
+				]);
 
 				if (user[0].name === "admin") {
-					req.body.admin = true;
+					body.admin = true;
 				}
 
 				// only save the password, if it isn't empty
-				if (req.body.password.length > 0) {
+				if (body.password.length > 0) {
 					const salt = await bcrypt.genSalt();
-			
-					const password_hash = await bcrypt.hash(req.body.password, salt);
 
-					await db.query("UPDATE users SET password = ?, admin = ? WHERE uid = ?", [password_hash, req.body.admin, req.query.uid]);
+					const password_hash = await bcrypt.hash(body.password, salt);
+
+					await db.query("UPDATE users SET password = ?, admin = ? WHERE uid = ?", [
+						password_hash,
+						body.admin,
+						req.query.uid
+					]);
 				} else {
-					await db.query("UPDATE users SET admin = ? WHERE uid = ?", [req.body.admin, req.query.uid]);
+					await db.query("UPDATE users SET admin = ? WHERE uid = ?", [body.admin, req.query.uid]);
 				}
 
-				return send_users(res);
+				return send_users();
 			} else {
 				return { status: HTTPStatus.BadRequest };
 			}
@@ -191,20 +284,23 @@ interface SessionCookie {
 			return { status: HTTPStatus.Unauthorized };
 		}
 	}
-	
-	async function delete_user(req: Request, res: Response): Promise<Message> {
+
+	async function delete_user(req: Request): Promise<Message> {
 		if (await check_admin(req)) {
 			logger.trace("delete_user: admin-check successful");
 
-			if (queryIsString(req.query.uid)) {
+			if (query_is_string(req.query.uid)) {
 				logger.trace("delete_user: arguments are valid");
 				try {
 					await db.query("DELETE FROM users WHERE uid=?", [req.query.uid]);
-
 					logger.trace("delete_user: deleted user from database");
-	
-					const send_user_result = send_users(res);
+
+					await db.query("DELETE FROM comments WHERE uid = ?", [req.query.uid]);
+					logger.trace("delete_user: deleted user-comments from database");
+
+					const send_user_result = send_users();
 					logger.trace("delete_user: send users to client");
+
 					return send_user_result;
 				} catch {
 					return { status: HTTPStatus.InternalServerError };
@@ -217,10 +313,20 @@ interface SessionCookie {
 		}
 	}
 
-	async function save_post(req: Request, res: Response): Promise<Message> {
+	async function save_post(req: Request): Promise<Message> {
 		if (await check_admin(req)) {
-			if (typeof req.body.title === "string" && typeof req.body.text === "string" && typeof req.query.pid === "string") {
-				await db.query("UPDATE posts SET title = ?, content = ? WHERE pid = ?", [req.body.title, req.body.text, req.query.pid]);
+			const body = req.body as Body;
+
+			if (
+				typeof body.title === "string" &&
+				typeof body.text === "string" &&
+				typeof req.query.pid === "string"
+			) {
+				await db.query("UPDATE posts SET title = ?, content = ? WHERE pid = ?", [
+					body.title,
+					body.text,
+					req.query.pid
+				]);
 
 				return { status: HTTPStatus.OK };
 			} else {
@@ -229,39 +335,51 @@ interface SessionCookie {
 		} else {
 			return { status: HTTPStatus.Unauthorized };
 		}
-
-		res.send();
 	}
-	
-	async function add_comment(req: Request, res: Response): Promise<Message> {
-		const uid = await extract_uid(req);
 
-		if (queryIsString(req.query.pid) && typeof uid === "number" && typeof req.body.text === "string") {
+	async function add_comment(req: Request): Promise<Message> {
+		const uid = extract_uid(req);
+
+		const body = req.body as Body;
+
+		if (
+			query_is_string(req.query.pid) &&
+			typeof uid === "number" &&
+			typeof body.text === "string"
+		) {
 			try {
 				// check wether the user already posted
-				const data = await db.query("SELECT 1 FROM comments WHERE pid = ? AND uid = ? LIMIT 1", [req.query.pid, uid]);
+				const data: 1[] = await db.query(
+					"SELECT 1 FROM comments WHERE pid = ? AND uid = ? LIMIT 1",
+					[req.query.pid, uid]
+				);
 
 				if (data.length === 0) {
-					await db.query("INSERT INTO comments (pid, uid, text) VALUES (?, ?, ?)", [req.query.pid, uid, req.body.text]);
+					await db.query("INSERT INTO comments (pid, uid, text) VALUES (?, ?, ?)", [
+						req.query.pid,
+						uid,
+						body.text
+					]);
 
-					return send_comments(res, parseInt(req.query.pid));
+					return send_comments(parseInt(req.query.pid));
 				} else {
 					return { status: HTTPStatus.Conflict, message: "user has already commented on post" };
 				}
 			} catch {
-				return { status: HTTPStatus.InternalServerError };;
+				return { status: HTTPStatus.InternalServerError };
 			}
 		} else {
 			return { status: HTTPStatus.BadRequest };
 		}
-	};
+	}
 
-	async function delete_comment(req: Request, res: Response): Promise<Message> {
+	async function delete_comment(req: Request): Promise<Message> {
 		if (await check_admin(req)) {
-			if (typeof req.body.cid === "number" && typeof req.body.cid === "number") {
+			const body = req.body as Body;
+			if (typeof body.cid === "number" && typeof body.cid === "number") {
 				try {
-					await db.query("DELETE FROM comments WHERE cid = ?", [req.body.cid]);
-					
+					await db.query("DELETE FROM comments WHERE cid = ?", [body.cid]);
+
 					return { status: HTTPStatus.OK };
 				} catch {
 					return { status: HTTPStatus.InternalServerError };
@@ -273,19 +391,26 @@ interface SessionCookie {
 			return { status: HTTPStatus.Unauthorized };
 		}
 	}
-	
-	async function add_answer(req: Request, res: Response): Promise<Message> {
+
+	async function add_answer(req: Request): Promise<Message> {
 		if (await check_admin(req)) {
 			logger.trace("add_answer: admin-check succesful");
 
-			if (queryIsString(req.query.cid) && typeof req.body.answer === "string") {
+			const body = req.body as Body;
+
+			if (query_is_string(req.query.cid) && typeof body.answer === "string") {
 				logger.trace("add_answer: arguments are valid");
 
 				try {
-					await db.query("UPDATE comments SET answer = ? WHERE cid = ?", [req.body.answer, req.query.cid]);
+					await db.query("UPDATE comments SET answer = ? WHERE cid = ?", [
+						body.answer,
+						req.query.cid
+					]);
 					logger.trace("add_answer: wrote answer to database");
 
-					const data = await db.query("SELECT * FROM comments WHERE cid = ?", [req.query.cid]);
+					const data: Comment[] = await db.query("SELECT * FROM comments WHERE cid = ?", [
+						req.query.cid
+					]);
 					logger.trace("add_answer: selected comment from database");
 
 					return { status: HTTPStatus.OK, json: data[0] };
@@ -298,35 +423,43 @@ interface SessionCookie {
 		} else {
 			return { status: HTTPStatus.Unauthorized };
 		}
-	};
-	
-	async function get_posts(req: Request, res: Response): Promise<Message> {
-		if (queryIsString(req.query.pid)) {
+	}
+
+	async function get_posts(req: Request): Promise<Message> {
+		if (query_is_string(req.query.pid)) {
 			const pid = parseInt(req.query.pid);
 
 			if (!isNaN(pid)) {
-				return send_posts(res, pid);
+				return send_posts(pid);
 			} else {
 				return { status: HTTPStatus.BadRequest };
 			}
 		} else {
-			return send_posts(req, res);
+			return send_posts(req);
 		}
 	}
 
-	async function login(req: Request, res: Response) {
-		if (typeof req.body.user === "string" && typeof req.body.password === "string") {
-			const response_wrong = "wrong username or password";
+	function get_post_config(): Promise<Message> {
+		return Promise.resolve({
+			status: HTTPStatus.OK,
+			json: Config.setup
+		});
+	}
 
+	async function login(req: Request, res: Response): Promise<Message> {
+		const body = req.body as Body;
+
+		if (typeof body.user === "string" && typeof body.password === "string") {
 			try {
-				const users: { uid: number; name: string; password: Buffer; admin: boolean | null; }[] = await db.query("SELECT * FROM users WHERE name = ? LIMIT 1", [req.body.user]);
+				const users: { uid: number; name: string; password: Buffer; admin: boolean | null }[] =
+					await db.query("SELECT * FROM users WHERE name = ? LIMIT 1", [body.user]);
 
 				if (users.length === 0) {
-					res.status(HTTPStatus.Unauthorized).send(response_wrong);
+					return { status: HTTPStatus.Unauthorized };
 				} else {
 					const user = users[0];
 
-					if (await bcrypt.compare(req.body.password, user.password.toString("utf-8"))) {
+					if (await bcrypt.compare(body.password, user.password.toString("utf-8"))) {
 						const data: JWT = {
 							uid: user.uid
 						};
@@ -344,101 +477,120 @@ interface SessionCookie {
 							token
 						};
 
-						res.cookie("session", cookie, { httpOnly: true, sameSite: 'strict', maxAge: Config.session_expire });
-
-						res.status(HTTPStatus.OK).json({
-							...response,
-							loggedIn: true
+						/* eslint-disable @typescript-eslint/naming-convention */
+						res.cookie("session", cookie, {
+							httpOnly: true,
+							sameSite: "strict",
+							maxAge: Config.session_expire
 						});
+						/* eslint-enable @typescript-eslint/naming-convention */
+
+						return {
+							status: HTTPStatus.OK,
+							json: {
+								...response,
+								logged_in: true
+							}
+						};
 					} else {
-						res.status(HTTPStatus.Unauthorized).send(response_wrong);
+						return { status: HTTPStatus.Unauthorized };
 					}
 				}
 			} catch {
-				res.status(HTTPStatus.InternalServerError).send();
+				return { status: HTTPStatus.InternalServerError };
 			}
 		} else {
-			res.status(HTTPStatus.BadRequest).send();
+			return { status: HTTPStatus.BadRequest };
 		}
 	}
 
-	async function welcome(req: Request, res: Response) {
-		const session = req.cookies.session;
+	function welcome(req: Request): Message {
+		const session = extract_session_cookie(req);
 
-		const return_object = {
-			name: null,
-			admin: null,
-			loggedIn: false,
-			uid: null
+		type WelcomeMessage =
+			| { logged_in: boolean; uid: number; admin: boolean }
+			| { logged_in: boolean };
+		let return_object: WelcomeMessage = {
+			logged_in: false
 		};
 
 		if (session !== undefined) {
-			return_object.name = session.name;
-			return_object.admin = session.admin;
-			return_object.loggedIn = true;
-			return_object.uid = session.uid;
+			return_object = {
+				admin: session.admin,
+				logged_in: true,
+				uid: session.uid
+			};
 		}
 
-		res.status(HTTPStatus.OK).json(return_object);
+		return {
+			status: HTTPStatus.OK,
+			json: return_object
+		};
 	}
 
-	async function logout(req: Request, res: Response): Promise<Message> {
+	function logout(req: Request, res: Response): Promise<Message> {
 		res.clearCookie("session");
 
-		return {
+		return Promise.resolve({
 			status: HTTPStatus.OK,
 			json: {
 				uid: 0,
 				name: "",
 				admin: false,
-				loggedIn: false
+				logged_in: false
 			}
-		};
+		});
 	}
-	
-	app.listen(61016, "172.25.220.64");
-	
-	async function send_users(res: Response): Promise<Message> {
-		const data_raw: { uid: number; name: string; admin: number; }[] = await db.query("SELECT uid, name, admin FROM users");
 
-		const data: { uid: number; name: string; admin: boolean; }[] = data_raw.map(user => {
+	async function send_users(): Promise<Message> {
+		const data_raw: { uid: number; name: string; admin: number }[] = await db.query(
+			"SELECT uid, name, admin FROM users"
+		);
+
+		const data: { uid: number; name: string; admin: boolean }[] = data_raw.map((user) => {
 			return {
 				...user,
 				admin: Boolean(user.admin)
-			}
+			};
 		});
 
 		return { status: HTTPStatus.OK, json: data };
 	}
-	
-	async function get_comments(req: Request, res: Response): Promise<Message> {
+
+	async function get_comments(req: Request): Promise<Message> {
 		if (typeof req.query.pid === "string") {
 			const pid = parseInt(req.query.pid);
 
 			if (!isNaN(pid)) {
-				return send_comments(res, pid);
+				return send_comments(pid);
 			} else {
 				return { status: HTTPStatus.BadRequest };
 			}
 		} else {
-			return send_comments(req, res);
+			return send_comments(req);
 		}
 	}
 
-	async function send_posts(req: Request, res: Response): Promise<Message>;
-	async function send_posts(res: Response, pid: number): Promise<Message>;
-	async function send_posts(req_res: Request | Response, res_pid: Response | number ): Promise<Message> {
-		let data;
-		let res: Response;
+	async function send_posts(req: Request): Promise<Message>;
+	async function send_posts(pid: number): Promise<Message>;
+	async function send_posts(req_pid: Request | number): Promise<Message> {
+		let data: PostsEntry[];
 
-		if (typeof res_pid === "number") {
-			const pid = res_pid;
-			res = req_res as Response;
+		// a specific post is requested
+		if (typeof req_pid === "number") {
+			const pid = req_pid;
 
-			data = (await db.query("SELECT * FROM posts WHERE pid = ?", [pid]))[0];
+			const db_result: PostsEntry[] = await db.query("SELECT * FROM posts WHERE pid = ?", [pid]);
+
+			// only send post, if the date allows it
+			if (new Date() >= new Date(db_result?.[0].date)) {
+				data = db_result;
+			} else {
+				return { status: HTTPStatus.Forbidden };
+			}
 		} else {
-			const req = req_res as Request;
-			res = res_pid;
+			// no pid is give, try to send all posts
+			const req = req_pid;
 
 			if (await check_admin(req)) {
 				data = await db.query("SELECT * FROM posts");
@@ -454,20 +606,27 @@ interface SessionCookie {
 		}
 	}
 
-	async function send_comments(req: Request, res: Response): Promise<Message>;
-	async function send_comments(res: Response, pid: number): Promise<Message>;
-	async function send_comments(req_res: Request | Response, res_pid: Response | number ): Promise<Message> {
-		let data;
-		let res: Response;
+	async function send_comments(req: Request): Promise<Message>;
+	async function send_comments(pid: number): Promise<Message>;
+	async function send_comments(req_pid: Request | number): Promise<Message> {
+		let data: Record<string, unknown>[];
 
-		if (typeof res_pid === "number") {
-			const pid = res_pid;
-			res = req_res as Response;
+		if (typeof req_pid === "number") {
+			const pid = req_pid;
 
-			data = await db.query("SELECT * FROM comments WHERE pid=? ORDER BY cid DESC", [pid]);
+			// get the date of the post
+			const db_result: { date: string }[] = await db.query("SELECT date FROM posts WHERE pid = ?", [
+				pid
+			]);
+
+			// only send post, if the date allows it
+			if (new Date() >= new Date(db_result[0].date)) {
+				data = await db.query("SELECT * FROM comments WHERE pid=? ORDER BY cid DESC", [pid]);
+			} else {
+				return { status: HTTPStatus.Forbidden };
+			}
 		} else {
-			const req = req_res as Request;
-			res = res_pid;
+			const req = req_pid;
 
 			if (await check_admin(req)) {
 				data = await db.query("SELECT * FROM comments ORDER BY cid DESC");
@@ -477,17 +636,9 @@ interface SessionCookie {
 		}
 
 		if (data !== undefined) {
-			return { status: HTTPStatus.OK, json: data};
+			return { status: HTTPStatus.OK, json: data };
 		} else {
 			return { status: HTTPStatus.InternalServerError };
 		}
 	}
 })();
-
-function queryIsString(value: qs.ParsedQs["string"]): value is string {
-	if (typeof value === "string") {
-		return !isNaN(Number(value));
-	} else {
-		return false;
-	}
-}

@@ -1,7 +1,6 @@
 import fs from "fs";
 import { Levels } from "log4js";
 import ms from "ms";
-import path from "path";
 import yaml from "yaml";
 
 export interface DatabaseConnectionSettings {
@@ -21,7 +20,7 @@ export interface ConfigYAML {
 	setup: {
 		start: string;
 		days: number;
-	}
+	};
 }
 
 const config_path = "config.yaml";
@@ -57,9 +56,14 @@ class ConfigClass {
 	}
 
 	open(pth: string = config_path): boolean {
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 		const new_config = yaml.parse(fs.readFileSync(pth, "utf-8"));
 
-		new_config.client_session.expire = ms(new_config.client_session.expire);
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+		if (new_config?.client_session?.expire !== undefined) {
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
+			new_config.client_session = ms(new_config?.client_session?.expire);
+		}
 
 		if (this.check_config(new_config)) {
 			this.config_path = pth;
@@ -80,7 +84,9 @@ class ConfigClass {
 		fs.writeFileSync(pth, JSON.stringify(this.config, undefined, "\t"));
 	}
 
-	private check_config(config: ConfigYAML): boolean {
+	private check_config(config_arg: unknown): config_arg is ConfigYAML {
+		const config = config_arg as ConfigYAML;
+
 		let file_check = recurse_object_check(config, config_template);
 
 		file_check &&= [
@@ -103,7 +109,7 @@ class ConfigClass {
 
 		return file_check;
 	}
-	
+
 	get database(): DatabaseConnectionSettings {
 		return structuredClone(this.config.database);
 	}
@@ -163,60 +169,6 @@ export function recurse_object_check<K>(obj: K, template: K): boolean {
 	}
 }
 
-export enum HTTPStatus {
-	Continue = 100,
-	SwitchingProtocols = 101,
-	EarlyHints = 103,
-	OK = 200,
-	Created = 201,
-	Accepted = 202,
-	NonauthoritativeInformation = 203,
-	NoContent = 204,
-	ResetContent = 205,
-	PartialContent = 206,
-	MultipleChoices = 300,
-	MovedPermanently = 301,
-	Found = 302,
-	SeeOther = 303,
-	NotModified = 304,
-	unused = 306,
-	TemporaryRedirect = 307,
-	Permanent = 308,
-	BadRequest = 400,
-	Unauthorized = 401,
-	Forbidden = 403,
-	NotFound = 404,
-	MethodNotAllowed = 405,
-	NotAcceptable = 406,
-	ProxyAuthenticationRequired = 407,
-	RequestTimeout = 408,
-	Conflict = 409,
-	Gone = 410,
-	LengthRequired = 411,
-	PreconditionFailed = 412,
-	PayloadTooLarge = 413,
-	URITooLong = 414,
-	UnsupportedMediaType = 415,
-	RangeNotSatisfiable = 416,
-	ExpectationFailed = 417,
-	Imateapot = 418,
-	MisdirectedRequest = 421,
-	TooEarly = 425,
-	UpgradeRequired = 426,
-	PreconditionRequired = 428,
-	TooManyRequests = 429,
-	RequestHeaderFieldsTooLarge = 431,
-	UnavailableForLegalReasons = 451,
-	InternalServerError = 500,
-	NotImplemented = 501,
-	BadGateway = 502,
-	ServiceUnavailable = 503,
-	GatewayTimeout = 504,
-	HTTPVersionNotSupported = 505,
-	VariantAlsoNegotiates = 506,
-	NotExtended = 510,
-	NetworkAuthenticationRequired = 511	
-}
-
+// eslint-disable-next-line @typescript-eslint/naming-convention
 const Config = new ConfigClass();
 export default Config;
