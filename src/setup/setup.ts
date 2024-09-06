@@ -57,7 +57,7 @@ void (async () => {
 
 	// create the admin-user
 	const password_chars =
-		'ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜabcdefghijklmnopqrstuvwxyzäöüß0123456789!"§$%&/()=?+#';
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜabcdefghijklmnopqrstuvwxyzäöüß0123456789!§$%&/()=?+#";
 	const password_length = 20;
 	let password = "";
 	for (let ii = 0; ii < password_length; ii++) {

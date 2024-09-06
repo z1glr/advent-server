@@ -19,7 +19,6 @@ const esbuild_settings = {
 if (process.argv[2] === "debug") {
 	esbuild_settings.outdir = "out/server";
 	esbuild_settings.sourcemap = true;
-	esbuild_settings.minify = true;
 } else {
 	esbuild_settings.outdir = "dist/build";
 	esbuild_settings.minify = true;
