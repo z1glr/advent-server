@@ -211,6 +211,30 @@ void (async () => {
 		}
 	}
 
+	/**
+	 * Checks wether the uid is an admin or the same as in the session-token
+	 * @param uid user to check
+	 * @param req request with the session-token
+	 * @returns wether the user is an admin or the same as in the session-token
+	 */
+	async function is_self_or_admin(uid: number, req: Request): Promise<boolean> {
+		// if it is for the same user, overwrite 'admiN' to true
+		if (uid === extract_uid(req)) {
+			return true;
+		} else {
+			// if it is the admin user, overwrite 'admin' to true
+			const user: { name: string }[] = await db.query("SELECT name FROM users WHERE uid = ?", [
+				req.query.uid
+			]);
+
+			if (user[0].name === "admin") {
+				return true;
+			} else {
+				return false;
+			}
+		}
+	}
+
 	async function get_users(): Promise<Message> {
 		return send_users();
 	}
@@ -253,18 +277,8 @@ void (async () => {
 				typeof body.admin === "boolean" &&
 				typeof body.password === "string"
 			) {
-				// if it is for the same user, overwrite 'admiN' to true
-				if (parseInt(req.query.uid) === extract_uid(req)) {
+				if (await is_self_or_admin(parseInt(req.query.uid), req)) {
 					body.admin = true;
-				} else {
-					// if it is the admin user, overwrite 'admin' to true
-					const user: { name: string }[] = await db.query("SELECT name FROM users WHERE uid = ?", [
-						req.query.uid
-					]);
-
-					if (user[0].name === "admin") {
-						body.admin = true;
-					}
 				}
 
 				// only save the password, if it isn't empty
@@ -297,19 +311,25 @@ void (async () => {
 
 			if (query_is_string(req.query.uid)) {
 				logger.trace("delete_user: arguments are valid");
-				try {
-					await db.query("DELETE FROM users WHERE uid=?", [req.query.uid]);
-					logger.trace("delete_user: deleted user from database");
 
-					await db.query("DELETE FROM comments WHERE uid = ?", [req.query.uid]);
-					logger.trace("delete_user: deleted user-comments from database");
+				// prevent deleting the admin-account or self
+				if (await is_self_or_admin(parseInt(req.query.uid), req)) {
+					return { status: HTTPStatus.Forbidden };
+				} else {
+					try {
+						await db.query("DELETE FROM users WHERE uid=?", [req.query.uid]);
+						logger.trace("delete_user: deleted user from database");
 
-					const send_user_result = send_users();
-					logger.trace("delete_user: send users to client");
+						await db.query("DELETE FROM comments WHERE uid = ?", [req.query.uid]);
+						logger.trace("delete_user: deleted user-comments from database");
 
-					return send_user_result;
-				} catch {
-					return { status: HTTPStatus.InternalServerError };
+						const send_user_result = send_users();
+						logger.trace("delete_user: send users to client");
+
+						return send_user_result;
+					} catch {
+						return { status: HTTPStatus.InternalServerError };
+					}
 				}
 			} else {
 				return { status: HTTPStatus.BadRequest };
