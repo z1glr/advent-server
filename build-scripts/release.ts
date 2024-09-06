@@ -181,7 +181,8 @@ function create_launch_script(pth: string, destination: string) {
 		case "linux":
 			fs.writeFileSync(
 				path.join(release_dir, destination + ".sh"),
-				`${relative_path_prefix}./${exec_name} ${pth}\nread -n1 -r -p "Press any key to continue..." key`
+				`${relative_path_prefix}./${exec_name} ${pth}\nread -n1 -r -p "Press any key to continue..." key`,
+				{ mode: "766" }
 			);
 			break;
 	}
