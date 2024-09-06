@@ -1,1 +1,0 @@
-cd '/usr' ; sudo /usr/bin/mariadbd-safe --datadir='/var/lib/mysql'

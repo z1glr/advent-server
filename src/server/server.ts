@@ -8,11 +8,6 @@ import Config from "./config";
 import { logger } from "./logger";
 import { HTTPStatus, iiaf_wrap, query_is_string } from "./lib";
 
-// TODO: add logging
-// TODO: catch more stuff
-// TODO: move listen-port to config
-// TODO: remove title from posts, use markdown instead
-
 // data stored in the JSON webtoken
 interface JWT {
 	uid: number;
@@ -31,7 +26,6 @@ type Body = Record<string, unknown>;
 interface PostsEntry {
 	pid: number;
 	date: string;
-	title: string;
 	content: string;
 }
 
@@ -126,7 +120,7 @@ void (async () => {
 		});
 	});
 
-	app.listen(61016);
+	app.listen(Config.server.port);
 	logger.log("added API-endpoints");
 
 	/**
@@ -318,16 +312,8 @@ void (async () => {
 		if (await check_admin(req)) {
 			const body = req.body as Body;
 
-			if (
-				typeof body.title === "string" &&
-				typeof body.text === "string" &&
-				typeof req.query.pid === "string"
-			) {
-				await db.query("UPDATE posts SET title = ?, content = ? WHERE pid = ?", [
-					body.title,
-					body.text,
-					req.query.pid
-				]);
+			if (typeof body.text === "string" && typeof req.query.pid === "string") {
+				await db.query("UPDATE posts SET content = ? WHERE pid = ?", [body.text, req.query.pid]);
 
 				return { status: HTTPStatus.OK };
 			} else {

@@ -26,7 +26,7 @@ void (async () => {
 		"CREATE TABLE users (uid int NOT NULL KEY auto_increment, admin bool NOT NULL DEFAULT 0, name text NOT NULL, password binary(62) NOT NULL)"
 	);
 	await db.query(
-		"CREATE TABLE posts (pid int NOT NULL KEY auto_increment, title tinytext NOT NULL DEFAULT '', content text NOT NULL DEFAULT '', date char(14) NOT NULL UNIQUE)"
+		"CREATE TABLE posts (pid int NOT NULL KEY auto_increment, content text NOT NULL DEFAULT '', date char(14) NOT NULL UNIQUE)"
 	);
 	await db.query(
 		"CREATE TABLE comments (cid int NOT NULL KEY auto_increment, pid int NOT NULL, uid int NOT NULL, text text NOT NULL, answer text)"

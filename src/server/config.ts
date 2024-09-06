@@ -21,6 +21,9 @@ export interface ConfigYAML {
 		start: string;
 		days: number;
 	};
+	server: {
+		port: number;
+	};
 }
 
 const config_path = "config.yaml";
@@ -41,6 +44,9 @@ const config_template: ConfigYAML = {
 	setup: {
 		days: 1,
 		start: "1970-01-01"
+	},
+	server: {
+		port: 0
 	}
 };
 
@@ -128,6 +134,10 @@ class ConfigClass {
 
 	get setup(): ConfigYAML["setup"] {
 		return structuredClone(this.config.setup);
+	}
+
+	get server(): ConfigYAML["server"] {
+		return structuredClone(this.config.server);
 	}
 }
 
