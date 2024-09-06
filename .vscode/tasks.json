@@ -2,11 +2,52 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"type": "typescript",
+			"tsconfig": "src/server/tsconfig.json",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build",
+			"label": "server: tsc-type-check"
+		},
+		{
 			"type": "npm",
 			"script": "dev",
+			"group": "build",
 			"problemMatcher": [],
-			"label": "npm: dev",
-			"detail": "nodemon server.js"
+			"label": "server: esbuild-sourcemap"
 		},
+		{
+			"label": "server: tsc-type-check and esbuild-sourcemap",
+			"dependsOrder": "sequence",
+			"dependsOn": [
+				"server: tsc-type-check",
+				"server: esbuild-sourcemap"
+			]
+		},
+		{
+			"type": "typescript",
+			"tsconfig": "src/setup/tsconfig.json",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "build",
+			"label": "setup: tsc-type-check"
+		},
+		{
+			"type": "npm",
+			"script": "setup-dev",
+			"group": "build",
+			"problemMatcher": [],
+			"label": "setup: esbuild-sourcemap"
+		},
+		{
+			"label": "setup: tsc-type-check and esbuild-sourcemap",
+			"dependsOrder": "sequence",
+			"dependsOn": [
+				"setup: tsc-type-check",
+				"setup: esbuild-sourcemap"
+			]
+		}
 	]
 }

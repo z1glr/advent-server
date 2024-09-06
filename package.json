@@ -1,17 +1,20 @@
 {
-	"name": "express",
+	"name": "advent-server",
 	"version": "1.0.0",
 	"main": "index.js",
 	"scripts": {
-		"dev": "nodemon",
-		"build-setup": "tsc -p tsconfig.setup.json",
+		"dev": "node build-scripts/server.js debug",
+		"build": "node build-scripts/server.js release",
+		"setup-dev": "node build-scripts/setup.js debug",
+		"setup-build": "node build-scripts/setup.js release",
+		"release": "node build-scripts/build-release.js && node build-scripts/release.js",
 		"lint": "eslint .",
 		"format-check": "prettier --check src/",
 		"format-write": "prettier --write src/",
 		"prepare": "husky"
 	},
-	"author": "",
-	"license": "ISC",
+	"author": "z1glr",
+	"license": "MIT",
 	"description": "",
 	"dependencies": {
 		"bcrypt": "^5.1.1",
@@ -24,9 +27,13 @@
 		"promise-mysql": "^5.2.0",
 		"yaml": "^2.5.0"
 	},
+	"extDependencies": [
+		"bcrypt"
+	],
 	"devDependencies": {
 		"@eslint/eslintrc": "^3.1.0",
 		"@eslint/js": "^9.9.1",
+		"@types/archiver": "^6.0.2",
 		"@types/bcrypt": "^5.0.2",
 		"@types/cookie-parser": "^1.4.7",
 		"@types/express": "^4.17.21",
@@ -35,12 +42,13 @@
 		"@types/mysql": "^2.15.26",
 		"@typescript-eslint/eslint-plugin": "^8.4.0",
 		"@typescript-eslint/parser": "^8.4.0",
+		"@weichwarenprojekt/license-reporter": "^1.0.0",
+		"archiver": "^7.0.1",
 		"esbuild": "^0.23.1",
 		"esbuild-node-tsc": "^2.0.5",
 		"eslint": "^9.9.1",
 		"eslint-config-prettier": "^9.1.0",
 		"husky": "^9.1.5",
-		"nodemon": "^3.1.4",
 		"prettier": "^3.3.3",
 		"typescript": "^5.5.4"
 	}

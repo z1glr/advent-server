@@ -1,6 +1,0 @@
-{
-	"watch": ["src", "config.yaml"],
-	"ext": "ts,json,yaml",
-	"exec": "etsc && node ./dist/server.js",
-	"legacyWatch": true
-}

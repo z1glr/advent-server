@@ -1,7 +1,7 @@
 import mysql from "promise-mysql";
 import bcrypt from "bcrypt";
 
-import Config from "./config";
+import Config from "../server/config";
 
 void (async () => {
 	let db = await mysql.createConnection({

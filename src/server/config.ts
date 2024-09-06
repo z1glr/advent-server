@@ -62,7 +62,7 @@ class ConfigClass {
 		// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
 		if (new_config?.client_session?.expire !== undefined) {
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
-			new_config.client_session = ms(new_config?.client_session?.expire);
+			new_config.client_session.expire = ms(new_config?.client_session?.expire);
 		}
 
 		if (this.check_config(new_config)) {
@@ -148,7 +148,7 @@ export function recurse_object_check<K>(obj: K, template: K): boolean {
 			results.push(
 				...Object.entries(template as object).map(([key, item]): boolean => {
 					if (obj_keys.includes(key)) {
-						return recurse_object_check(item, (template as Record<string, unknown>)[key]);
+						return recurse_object_check(item, (obj as Record<string, unknown>)[key]);
 					} else {
 						return false;
 					}

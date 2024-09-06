@@ -31,8 +31,9 @@ export default [...compat.extends(
 
         parserOptions: {
             project: [
-                "tsconfig.json",
-				"tsconfig.setup.json"
+                "src/server/tsconfig.json",
+				"src/setup/tsconfig.json",
+				"build-scripts/tsconfig.json"
             ],
         },
     },
@@ -61,6 +62,9 @@ export default [...compat.extends(
 },{
 	ignores: [
 		"eslint.config.mjs",
-		"dist/*"
+		"dist/*",
+		"out/*",
+		"build-scripts/*.js",
+		"build-scripts/license-reporter.config.ts"
 	]
 }];

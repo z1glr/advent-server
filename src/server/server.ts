@@ -127,7 +127,7 @@ void (async () => {
 	});
 
 	app.listen(61016);
-	console.log("added API-endpoints");
+	logger.log("added API-endpoints");
 
 	/**
 	 * populate and send the response
@@ -201,8 +201,9 @@ void (async () => {
 	 * @returns uid
 	 */
 	function extract_uid(req: Request): number | null {
-		if (typeof req.cookies === "object" && typeof req.cookies.session === "string") {
-			const token: string = req.cookies.session;
+		if (typeof req.cookies === "object" && typeof req.cookies.session === "object") {
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+			const token: string = req.cookies.session.token ?? "";
 
 			return (jwt.verify(token, Config.jwt_secret) as JWT).uid;
 		} else {
@@ -574,7 +575,7 @@ void (async () => {
 	async function send_posts(req: Request): Promise<Message>;
 	async function send_posts(pid: number): Promise<Message>;
 	async function send_posts(req_pid: Request | number): Promise<Message> {
-		let data: PostsEntry[];
+		let data: PostsEntry[] | PostsEntry;
 
 		// a specific post is requested
 		if (typeof req_pid === "number") {
@@ -584,7 +585,7 @@ void (async () => {
 
 			// only send post, if the date allows it
 			if (new Date() >= new Date(db_result?.[0].date)) {
-				data = db_result;
+				data = db_result[0];
 			} else {
 				return { status: HTTPStatus.Forbidden };
 			}

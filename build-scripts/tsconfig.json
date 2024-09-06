@@ -8,7 +8,6 @@
 		"skipLibCheck": true,
 		"noImplicitAny": true,
 		"noImplicitThis": true,
-		"noEmit": true
+		"outDir": "dist"
 	}
 }
-
