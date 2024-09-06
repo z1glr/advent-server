@@ -253,13 +253,18 @@ void (async () => {
 				typeof body.admin === "boolean" &&
 				typeof body.password === "string"
 			) {
-				// if it is the admin, user overwrite 'admin' to true
-				const user: { name: string }[] = await db.query("SELECT name FROM users WHERE uid = ?", [
-					req.query.uid
-				]);
-
-				if (user[0].name === "admin") {
+				// if it is for the same user, overwrite 'admiN' to true
+				if (parseInt(req.query.uid) === extract_uid(req)) {
 					body.admin = true;
+				} else {
+					// if it is the admin user, overwrite 'admin' to true
+					const user: { name: string }[] = await db.query("SELECT name FROM users WHERE uid = ?", [
+						req.query.uid
+					]);
+
+					if (user[0].name === "admin") {
+						body.admin = true;
+					}
 				}
 
 				// only save the password, if it isn't empty
