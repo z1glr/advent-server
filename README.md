@@ -7,3 +7,6 @@
 
 # admin-passwort
 pÄ10G9tüÜi2K85NNüBLf
+
+# setup / fix bcrypt
+npm rebuild bcrypt --build-from-source

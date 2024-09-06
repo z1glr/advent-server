@@ -52,7 +52,6 @@ void (async () => {
 			users: get_users,
 			posts: get_posts,
 			"posts/config": get_post_config,
-			logout,
 			comments: get_comments
 		},
 		POST: {
@@ -117,6 +116,13 @@ void (async () => {
 			logger.log("HTTP post request: /api/login");
 
 			send_response(res, await login(req, res));
+		});
+	});
+	app.get("/api/logout", (req, res) => {
+		iiaf_wrap(async () => {
+			logger.log("HTTP post request: /api/logout");
+
+			send_response(res, await logout(req, res));
 		});
 	});
 
