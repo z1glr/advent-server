@@ -4,6 +4,6 @@ dist
 out
 config.yaml
 
-build-scripts/release.js
-build-scripts/3rdpartylicenses.json
+build/release.js
+build/3rdpartylicenses.json
 start_mariadb.sh

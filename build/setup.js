@@ -20,7 +20,7 @@ if (process.argv[2] === "debug") {
 	esbuild_settings.outdir = "out/setup";
 	esbuild_settings.sourcemap = true
 } else {
-	esbuild_settings.outdir = "dist/build";
+	esbuild_settings.outdir = "dist/build/setup";
 	esbuild_settings.minify = true;
 }
 

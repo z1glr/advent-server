@@ -33,7 +33,7 @@ export default [...compat.extends(
             project: [
                 "src/server/tsconfig.json",
 				"src/setup/tsconfig.json",
-				"build-scripts/tsconfig.json"
+				"build/tsconfig.json"
             ],
         },
     },
@@ -64,7 +64,7 @@ export default [...compat.extends(
 		"eslint.config.mjs",
 		"dist/*",
 		"out/*",
-		"build-scripts/*.js",
-		"build-scripts/license-reporter.config.ts"
+		"build/*.js",
+		"build/license-reporter.config.ts"
 	]
 }];
