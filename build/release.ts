@@ -1,24 +1,24 @@
-import { IReporterCliConfiguration } from "@weichwarenprojekt/license-reporter";
+import { IReporterCliConfiguration, IReporterConfiguration } from "@weichwarenprojekt/license-reporter";
 import archiver from "archiver";
 import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import tmp from "tmp";
-
-// TODO: run type-check / lint at start
+import yaml from "yaml";
+import jsf, { Schema } from "json-schema-faker";
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 interface Config {
 	release_dir: string;
 	builds: Record<string, { script: string; files: string[]; entry?: string; }>;
 	license_report: {
-		config: Partial<Pick<IReporterCliConfiguration, "defaultLicenseText">> & Pick<IReporterCliConfiguration, "output" | "ignore" | "overrides">;
+		config: Partial<IReporterCliConfiguration> & Pick<IReporterConfiguration, "ignore">;
 		path: string;
 		license: { path: string; destination?: string; }
 	};
 	external_packages?: string[];
 	package_json?: string;
-	config?: { name: string; dest: string; };
+	configs?: Record<string, { schema: string; dest: string; }>;
 	keep?: boolean;
 }
 
@@ -39,18 +39,16 @@ const config: Config = {
 	external_packages: [
 		"bcrypt"
 	],
-	config: { name: "config.yaml", dest: "config_default.yaml" },
+	configs: { server: { schema: "config_schema.json", dest: "config_default.yaml" }},
 	license_report: {
 		config: {
-			// defaultLicenseText: undefined,
 			output: "build/3rdpartylicenses.json",
 			ignore: ["dist/*"],
 			overrides: []
 		},
 		path: "licenses",
 		license: { path: "LICENSE" }
-	},
-	keep: true // todo: remove
+	}
 };
 const build_dir = path.join(config.release_dir, "build");
 const release_dir_latest = path.join(config.release_dir, "latest");
@@ -69,7 +67,7 @@ function copy_release_dir (dir: string, dest?: string, args?: fs.CopySyncOptions
 	fs.cpSync(dir, path.join(release_dir_latest, dest ?? path.basename(dir)), { recursive: true, ...args });
 }
 function copy_module (name: string) {
-	console.log(`\t\t${name}`);
+	console.log(`\t\t'${name}'`);
 	copy_release_dir(`node_modules/${name}`, `node_modules/${name}/`);
 };
 
@@ -152,20 +150,104 @@ Object.entries(config.builds).forEach(([name, build]) => {
 	execSync(`npm run ${build.script}`);
 });
 
+// generate config-files from schemas
+if (config.configs !== undefined) {
+	console.log("Generating config-files from schemas");
+
+	Object.entries(config.configs).forEach(([name, conf]) => {
+		let file_format_library;
+	
+		switch (path.extname(conf.dest)) {
+			case ".yaml":
+				file_format_library = yaml;
+				break;
+			case ".json":
+				file_format_library = JSON;
+				break;
+		}
+	
+		if (file_format_library !== undefined) {
+			console.log(`\t${name}: '${conf.dest}' from '${conf.schema}'`);
+			
+			// eslint-disable-next-line @typescript-eslint/naming-convention
+			jsf.option({ useDefaultValue: true, requiredOnly: true });
+			
+			const sample_config = jsf.generate(JSON.parse(fs.readFileSync(conf.schema, "utf-8")) as Schema) as object;
+			
+			fs.writeFileSync(path.join(release_dir_latest, conf.dest), file_format_library.stringify(sample_config));
+	
+		}
+	});
+	console.log();
+}
+
+// create script-files, that start node with the entry-point
+type ObjectEntries<T extends object> = [keyof T, T[keyof T]][];
+type ConfigBuildsWithEntry = ObjectEntries<Record<string, Config["builds"][number] & Required<Pick<Config["builds"][number], "entry">>>>;
+const startup_script_builds = Object.entries(config.builds).filter(([, build]) => !!build.entry) as ConfigBuildsWithEntry;
+
+if (startup_script_builds.length > 0) {
+	console.log(`Creating startup-scripts`);
+
+	startup_script_builds.forEach(([name, build]) => {
+		create_launch_script(build.entry, name);
+	});
+	console.log();
+}
+
+// create and copy the licenses
+console.log("Aggregate licenses");
+
+const license_reporter_config_ts = `import { IReporterConfiguration } from "@weichwarenprojekt/license-reporter";export const configuration: Partial<IReporterConfiguration>=${JSON.stringify(config.license_report.config)}`
+const license_reporter_config_ts_file = tmp.fileSync({ postfix: ".ts" });
+
+fs.writeFileSync(license_reporter_config_ts_file.name, license_reporter_config_ts);
+
+try {
+	execSync(`npx license-reporter --config ${license_reporter_config_ts_file.name}`, { stdio: "ignore" });
+} catch { /* empty */ }
+
+license_reporter_config_ts_file.removeCallback();
+
+// eslint-disable-next-line @typescript-eslint/naming-convention
+interface License { name: string; licenseText: string }
+
+console.log("\tLoading licence-report");
+const licenses_orig = JSON.parse(fs.readFileSync(config.license_report.config.output ?? "build/3rdpartylicenses.json", "utf-8")) as License[];
+
+const licenses: Record<string, License> = {};
+
+licenses_orig.forEach((pack) => {
+	licenses[pack.name] = pack;
+});
+
+console.log("Creating licence-directory");
+fs.mkdirSync(path.join(release_dir_latest, config.license_report.path));
+
+console.log("\tWriting licences");
+Object.keys(package_json.dependencies).forEach((pack) => {
+	const lic = licenses[pack];
+
+	console.log(`\t\t'${lic.name}'`);
+
+	try {
+		fs.writeFileSync(path.join(release_dir_latest, config.license_report.path, `${lic.name}.txt`), lic.licenseText, "utf-8");
+	} catch {
+		if (lic.licenseText === undefined) {
+			throw new EvalError(`ERROR: no license was found for the package '${lic.name}'`);
+		}
+	}
+});
+
+console.log(`Writing ${package_json.name}-licene`)
+copy_release_file(config.license_report.license.path, config.license_report.license.destination);
+
 console.log();
 console.log(`Copying files to '${release_dir_latest}'`);
 
 // get the node executable
 console.log(`\tnode executable`);
 copy_release_file(process.execPath, exec_name);
-
-if (config.config !== undefined) {
-	// TODO - validate config
-	// recurse_check
-
-	console.log(`\t'${config.config.name}' to '${config.config.dest}'`);
-	copy_release_dir(config.config.name, config.config.dest);
-}
 
 Object.entries(config.builds).forEach(([name, build]) => {
 	console.log(`\t${name}: '${path.join(build_dir, build.files.toString())}'`);
@@ -187,77 +269,12 @@ Object.entries(config.builds).forEach(([name, build]) => {
 	});
 });
 
-
 if (config.external_packages !== undefined) {
 	console.log("\tCopying external node-modules");
 	
 	config.external_packages.forEach((module) => copy_module(module));
 	console.log();
 }
-
-
-// create a script-file, that start node with the entry-point
-type ObjectEntries<T extends object> = [keyof T, T[keyof T]][];
-type ConfigBuildsWithEntry = ObjectEntries<Record<string, Config["builds"][number] & Required<Pick<Config["builds"][number], "entry">>>>;
-const startup_script_builds = Object.entries(config.builds).filter(([, build]) => !!build.entry) as ConfigBuildsWithEntry;
-
-if (startup_script_builds.length > 0) {
-	console.log(`Creating startup-scripts`);
-
-	startup_script_builds.forEach(([name, build]) => {
-		create_launch_script(build.entry, name);
-	});
-	console.log();
-}
-
-// create and copy the licenses
-console.log("Creating node-module licence-report");
-
-const license_reporter_config_ts = `import { IReporterConfiguration } from "@weichwarenprojekt/license-reporter";export const configuration: Partial<IReporterConfiguration>=${JSON.stringify(config.license_report.config)}`
-const license_reporter_config_ts_file = tmp.fileSync({ postfix: ".ts" });
-
-fs.writeFileSync(license_reporter_config_ts_file.name, license_reporter_config_ts);
-
-try {
-	execSync(`npx license-reporter --config ${license_reporter_config_ts_file.name}`, { stdio: "ignore" });
-} catch { /* empty */ }
-
-license_reporter_config_ts_file.removeCallback();
-
-// eslint-disable-next-line @typescript-eslint/naming-convention
-interface License { name: string; licenseText: string }
-
-console.log("Loading licence-report");
-const licenses_orig = JSON.parse(fs.readFileSync(config.license_report.config.output, "utf-8")) as License[];
-
-const licenses: Record<string, License> = {};
-
-licenses_orig.forEach((pack) => {
-	licenses[pack.name] = pack;
-});
-
-console.log("Creating licence-directory");
-fs.mkdirSync(path.join(release_dir_latest, config.license_report.path));
-
-console.log("Writing licences");
-Object.keys(package_json.dependencies).forEach((pack) => {
-	const lic = licenses[pack];
-
-	console.log(`\t'${lic.name}'`);
-
-	try {
-		fs.writeFileSync(path.join(release_dir_latest, config.license_report.path, `${lic.name}.txt`), lic.licenseText, "utf-8");
-	} catch {
-		if (lic.licenseText === undefined) {
-			throw new EvalError(`ERROR: no license was found for the package '${lic.name}'`);
-		}
-	}
-});
-
-console.log(`Writing ${package_json.name}-licene`)
-copy_release_file(config.license_report.license.path, config.license_report.license.destination);
-
-console.log();
 
 // copy the release-latest directory to the versioned
 console.log(`Copying files to '${release_dir_version}'`);

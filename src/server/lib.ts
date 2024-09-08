@@ -1,3 +1,6 @@
+import Ajv from "ajv";
+import formatsPlugin from "ajv-formats";
+
 export function query_is_string(value: qs.ParsedQs["string"]): value is string {
 	if (typeof value === "string") {
 		return !isNaN(Number(value));
@@ -64,3 +67,6 @@ export enum HTTPStatus {
 export function iiaf_wrap(f: () => Promise<void>) {
 	void f();
 }
+
+export const ajv = new Ajv();
+formatsPlugin(ajv);
