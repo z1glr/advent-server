@@ -1,5 +1,5 @@
 import mysql from "promise-mysql";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 import Config from "../server/config";
 
@@ -35,6 +35,11 @@ void (async () => {
 	// populate the posts
 	const start_date = new Date(Config.setup.start);
 
+	/**
+	 * format a date object into the format yyyy-mm-dd
+	 * @param dt date-object
+	 * @returns
+	 */
 	function format_date(dt: Date): string {
 		return [
 			dt.getFullYear().toString(),
@@ -64,8 +69,8 @@ void (async () => {
 		password += password_chars[Math.floor(Math.random() * password_chars.length)];
 	}
 
-	const salt = await bcrypt.genSalt();
-	const password_hash = await bcrypt.hash(password, salt);
+	const salt = bcrypt.genSaltSync();
+	const password_hash = bcrypt.hashSync(password, salt);
 
 	await db.query("INSERT INTO users (name, password, admin) VALUES (?, ?, ?)", [
 		"admin",

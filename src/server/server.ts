@@ -1,12 +1,12 @@
 import express, { Request, Response } from "express";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import mysql from "promise-mysql";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 
 import Config from "./config";
 import { logger } from "./logger";
-import { HTTPStatus, iiaf_wrap, query_is_string } from "./lib";
+import { format_date, HTTPStatus, iiaf_wrap, is_number_string } from "./lib";
 
 // data stored in the JSON webtoken
 interface JWT {
@@ -23,10 +23,25 @@ interface SessionCookie {
 
 type Body = Record<string, unknown>;
 
-interface PostsEntry {
+interface UserEntry {
+	uid: number;
+	name: string;
+	password: string;
+	admin: 0 | 1;
+}
+
+interface PostEntry {
 	pid: number;
 	date: string;
 	content: string;
+}
+
+interface CommentEntry {
+	cid: number;
+	pid: number;
+	uid: number;
+	text: string;
+	answer: string | null;
 }
 
 // wrap in immediately invoked asynchronous function (IIAF) to enable
@@ -38,10 +53,35 @@ void (async () => {
 
 	// connect to the database
 	const db = await mysql.createConnection(Config.database);
+
+	/**
+	 * wraps a db.query inside a try-catch and logs errors
+	 * @param query sql-query
+	 * @param values values for the query
+	 * @returns db.query<T>(querry, values)
+	 */
+	async function db_query<T = unknown>(query: string, values?: unknown[]): Promise<T[] | false> {
+		try {
+			return db.query<T[]>(query, values);
+		} catch (error) {
+			let parameter_string: string = `query='${query}'`;
+
+			if (values !== undefined) {
+				parameter_string += `, values='${values.toString()}'`;
+			}
+
+			logger.error(
+				`database access failed with error '${error instanceof Error ? error.message : "unknown error"}' (${parameter_string})`
+			);
+
+			return false;
+		}
+	}
+
 	logger.log("Connected to database");
 
 	type Methods = "GET" | "POST" | "DELETE";
-	type Message = { status: number } & Partial<
+	type Message = { status: HTTPStatus } & Partial<
 		{ message?: string; json: never } | { json?: object; message: never }
 	>;
 
@@ -85,12 +125,12 @@ void (async () => {
 		Object.entries(paths).forEach(([path, func]) => {
 			// register the individual end-points
 			function_map[method as Methods]("/api/" + path, (req, res) => {
-				logger.log(`HTTP ${method} request: ${req.url}`);
-
-				//check wether the session-token is valid
-				const check_perm_res = check_permission(req);
-
 				iiaf_wrap(async () => {
+					logger.log(`HTTP ${method} request: ${req.url}`);
+
+					//check wether the session-token is valid
+					const check_perm_res = check_permission(req);
+
 					// if the session-token is valid, proceed with the handler-function
 					if (check_perm_res) {
 						const response_values = await func(req, res);
@@ -170,8 +210,10 @@ void (async () => {
 
 				return true;
 			} catch {
-				/* empty */
+				logger.log(`invalid session-token (session: '${JSON.stringify(session)}'))`);
 			}
+		} else {
+			logger.warn("'session.token' is undefined");
 		}
 
 		return false;
@@ -183,22 +225,28 @@ void (async () => {
 	 * @returns wether the request came from an admin
 	 */
 	async function check_admin(req: Request): Promise<boolean> {
-		try {
-			const uid = extract_uid(req);
-			const data: { admin: number }[] = await db.query("SELECT admin FROM users WHERE uid = ?", [
-				uid
-			]);
+		const uid = extract_uid(req);
 
-			return data?.[0].admin === 1;
-		} catch {
+		if (typeof uid === "number") {
+			const data = await db_query<Pick<UserEntry, "admin">>(
+				"SELECT admin FROM users WHERE uid = ?",
+				[uid]
+			);
+
+			if (data) {
+				return data[0].admin === 1;
+			} else {
+				return false;
+			}
+		} else {
 			return false;
 		}
 	}
 
 	/**
 	 * Extract the uid from a token
-	 * @param token
-	 * @returns uid
+	 * @param req Request
+	 * @returns uid; null if there is no session-token in req
 	 */
 	function extract_uid(req: Request): number | null {
 		if (typeof req.cookies === "object" && typeof req.cookies.session === "object") {
@@ -207,6 +255,8 @@ void (async () => {
 
 			return (jwt.verify(token, Config.jwt_secret) as JWT).uid;
 		} else {
+			logger.debug(`uid is null`);
+
 			return null;
 		}
 	}
@@ -217,17 +267,17 @@ void (async () => {
 	 * @param req request with the session-token
 	 * @returns wether the user is an admin or the same as in the session-token
 	 */
-	async function is_self_or_admin(uid: number, req: Request): Promise<boolean> {
-		// if it is for the same user, overwrite 'admiN' to true
-		if (uid === extract_uid(req)) {
+	async function is_self_or_admin_user(uid: string, req: Request): Promise<boolean> {
+		// if it is for the same user, overwrite 'admin' to true
+		if (parseInt(uid) === extract_uid(req)) {
 			return true;
 		} else {
 			// if it is the admin user, overwrite 'admin' to true
-			const user: { name: string }[] = await db.query("SELECT name FROM users WHERE uid = ?", [
+			const user = await db_query<Pick<UserEntry, "name">>("SELECT name FROM users WHERE uid = ?", [
 				req.query.uid
 			]);
 
-			if (user[0].name === "admin") {
+			if (!!user && user[0].name === "admin") {
 				return true;
 			} else {
 				return false;
@@ -235,228 +285,423 @@ void (async () => {
 		}
 	}
 
-	async function get_users(): Promise<Message> {
-		return send_users();
+	/**
+	 * check wether the specified user is an admin
+	 * @param uid uid of the user
+	 * @returns wether the user is an admin
+	 */
+	async function is_admin_user(uid: string): Promise<boolean>;
+	/**
+	 * check wether the specified user is an admin
+	 * @param req Request
+	 * @returns wether the user is an admin
+	 */
+	async function is_admin_user(req: Request): Promise<boolean>;
+	/**
+	 * check wether the specified user is an admin
+	 * @param uid_req uid of the user or Request
+	 * @returns wether the user is an admin
+	 */
+	async function is_admin_user(uid_req: string | Request): Promise<boolean> {
+		let result;
+
+		if (typeof uid_req === "string") {
+			result = await db_query<1>("SELECT 1 FROM users WHERE uid = ? AND name = admin", [uid_req]);
+		} else {
+			result = await db_query<1>("SELECT 1 FROM users WHERE uid = ? AND name = admin", [
+				extract_uid(uid_req)
+			]);
+		}
+
+		return !!result && result.length === 1;
 	}
 
-	async function add_user(req: Request): Promise<Message> {
-		const body = req.body as Body;
+	/**
+	 * create a hash from a password and catch and answer potential errors
+	 * @param password Password to be hashed
+	 * @returns hashed password. On error Message to answer the request
+	 */
+	function hash_password(password: string): Promise<string | Message> {
+		let password_hash: string;
+		let salt: string | undefined;
 
-		if (typeof body.user === "string" && typeof body.password === "string") {
-			try {
-				// check, wether the user already exists
-				const data: 1[] = await db.query("SELECT 1 FROM users WHERE name = ?", [body.user]);
+		try {
+			salt = bcrypt.genSaltSync();
 
-				if (data.length === 0) {
-					const salt = await bcrypt.genSalt();
+			password_hash = bcrypt.hashSync(password, salt);
 
-					const password_hash = await bcrypt.hash(body.password, salt);
-
-					await db.query("INSERT INTO users (name, password) VALUES (?, ?)", [
-						body.user,
-						password_hash
-					]);
-
-					return send_users();
-				} else {
-					return { status: HTTPStatus.Conflict, message: "user already exists" };
-				}
-			} catch {
-				return { status: HTTPStatus.InternalServerError };
+			return Promise.resolve(password_hash);
+		} catch (error) {
+			if (salt === undefined) {
+				logger.error(
+					`salt-generation failed with error '${error instanceof Error ? error.message : "unkown error"}'`
+				);
+			} else {
+				logger.error(
+					`password-hashing failed with error '${error instanceof Error ? error.message : "unkown error"}' (password='${password}', salt='${salt}')`
+				);
 			}
-		} else {
-			return { status: HTTPStatus.BadRequest };
+
+			return Promise.resolve({ status: HTTPStatus.InternalServerError });
 		}
 	}
 
+	/**
+	 * add a user to the database
+	 * @param req Request
+	 * @returns client-response-message
+	 */
+	async function add_user(req: Request): Promise<Message> {
+		if (await check_admin(req)) {
+			const body = req.body as Body;
+
+			if (typeof body.user === "string" && typeof body.password === "string") {
+				// check, wether the user already exists
+				const data = await db_query<1>("SELECT 1 FROM users WHERE name = ?", [body.user]);
+
+				if (data && data.length === 0) {
+					const password_hash = await hash_password(body.password);
+
+					if (typeof password_hash === "string") {
+						await db_query("INSERT INTO users (name, password) VALUES (?, ?)", [
+							body.user,
+							password_hash
+						]);
+
+						return get_users();
+					} else {
+						return password_hash;
+					}
+				} else {
+					logger.log(`Can't add user: user with name '${body.user}' already exists`);
+
+					return { status: HTTPStatus.Conflict, message: "user already exists" };
+				}
+			} else {
+				if (typeof body.user !== "string") {
+					logger.warn("body is missing 'user'");
+				} else {
+					logger.warn("body is missing 'password'");
+				}
+
+				return { status: HTTPStatus.BadRequest };
+			}
+		} else {
+			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
+
+			return { status: HTTPStatus.Forbidden };
+		}
+	}
+
+	/**
+	 * change the password or admin-status of a user
+	 * @param req Request
+	 * @returns client-response-message
+	 */
 	async function modify_user(req: Request): Promise<Message> {
 		if (await check_admin(req)) {
 			const body = req.body as Body;
 			if (
-				query_is_string(req.query.uid) &&
+				is_number_string(req.query.uid) &&
 				typeof body.admin === "boolean" &&
 				typeof body.password === "string"
 			) {
-				if (await is_self_or_admin(parseInt(req.query.uid), req)) {
+				const uid = req.query.uid;
+
+				if (await is_self_or_admin_user(uid, req)) {
 					body.admin = true;
 				}
 
 				// only save the password, if it isn't empty
-				if (body.password.length > 0) {
-					const salt = await bcrypt.genSalt();
+				if (
+					body.password.length > 0 &&
+					((await is_admin_user(req)) || !(await is_admin_user(uid)))
+				) {
+					const password_hash = await hash_password(body.password);
 
-					const password_hash = await bcrypt.hash(body.password, salt);
-
-					await db.query("UPDATE users SET password = ?, admin = ? WHERE uid = ?", [
-						password_hash,
-						body.admin,
-						req.query.uid
-					]);
+					if (typeof password_hash === "string") {
+						await db_query("UPDATE users SET password = ?, admin = ? WHERE uid = ?", [
+							password_hash,
+							body.admin,
+							req.query.uid
+						]);
+					} else {
+						return password_hash;
+					}
 				} else {
-					await db.query("UPDATE users SET admin = ? WHERE uid = ?", [body.admin, req.query.uid]);
+					await db_query("UPDATE users SET admin = ? WHERE uid = ?", [body.admin, req.query.uid]);
 				}
 
-				return send_users();
+				return get_users();
 			} else {
+				if (!is_number_string(req.query.uid)) {
+					logger.warn("query is missing 'uid");
+				} else if (typeof body.admin !== "boolean") {
+					logger.warn("body is missing 'admin'");
+				} else if (typeof body.password !== "string") {
+					logger.warn("body is missing 'password'");
+				}
+
 				return { status: HTTPStatus.BadRequest };
 			}
 		} else {
-			return { status: HTTPStatus.Unauthorized };
+			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
+
+			return { status: HTTPStatus.Forbidden };
 		}
 	}
 
+	/**
+	 * delete a user from the database
+	 * @param req Request
+	 * @returns client-response-message
+	 */
 	async function delete_user(req: Request): Promise<Message> {
 		if (await check_admin(req)) {
-			logger.trace("delete_user: admin-check successful");
-
-			if (query_is_string(req.query.uid)) {
-				logger.trace("delete_user: arguments are valid");
-
+			if (is_number_string(req.query.uid)) {
 				// prevent deleting the admin-account or self
-				if (await is_self_or_admin(parseInt(req.query.uid), req)) {
+				if (await is_self_or_admin_user(req.query.uid, req)) {
+					logger.warn(`Deleting self or admin isn't allowed (uid=${req.query.uid}')`);
+
 					return { status: HTTPStatus.Forbidden };
 				} else {
-					try {
-						await db.query("DELETE FROM users WHERE uid=?", [req.query.uid]);
-						logger.trace("delete_user: deleted user from database");
-
-						await db.query("DELETE FROM comments WHERE uid = ?", [req.query.uid]);
-						logger.trace("delete_user: deleted user-comments from database");
-
-						const send_user_result = send_users();
-						logger.trace("delete_user: send users to client");
-
-						return send_user_result;
-					} catch {
+					if (
+						!(await db_query("DELETE FROM users WHERE uid=?", [req.query.uid])) ||
+						!(await db_query("DELETE FROM comments WHERE uid = ?", [req.query.uid]))
+					) {
 						return { status: HTTPStatus.InternalServerError };
 					}
+
+					const send_user_result = get_users();
+
+					return send_user_result;
 				}
 			} else {
+				logger.warn("query is missing 'uid'");
+
 				return { status: HTTPStatus.BadRequest };
 			}
 		} else {
-			return { status: HTTPStatus.Unauthorized };
+			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
+
+			return { status: HTTPStatus.Forbidden };
 		}
 	}
 
+	/**
+	 * save a post to the database or update it if it already exists
+	 * @param req Request
+	 * @returns client-response-message
+	 */
 	async function save_post(req: Request): Promise<Message> {
 		if (await check_admin(req)) {
 			const body = req.body as Body;
 
 			if (typeof body.text === "string" && typeof req.query.pid === "string") {
-				await db.query("UPDATE posts SET content = ? WHERE pid = ?", [body.text, req.query.pid]);
+				if (
+					!(await db_query("UPDATE posts SET content = ? WHERE pid = ?", [
+						body.text,
+						req.query.pid
+					]))
+				) {
+					return { status: HTTPStatus.InternalServerError };
+				}
 
 				return { status: HTTPStatus.OK };
 			} else {
+				if (typeof body.text !== "string") {
+					logger.warn("query is missing 'pid'");
+				} else {
+					logger.warn("body is missing 'text'");
+				}
+
 				return { status: HTTPStatus.BadRequest };
 			}
 		} else {
-			return { status: HTTPStatus.Unauthorized };
+			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
+
+			return { status: HTTPStatus.Forbidden };
 		}
 	}
 
+	/**
+	 * add an comment to a post
+	 * @param req Request
+	 * @returns client-response-message
+	 */
 	async function add_comment(req: Request): Promise<Message> {
 		const uid = extract_uid(req);
 
 		const body = req.body as Body;
 
 		if (
-			query_is_string(req.query.pid) &&
+			is_number_string(req.query.pid) &&
 			typeof uid === "number" &&
 			typeof body.text === "string"
 		) {
-			try {
-				// check wether the user already posted
-				const data: 1[] = await db.query(
-					"SELECT 1 FROM comments WHERE pid = ? AND uid = ? LIMIT 1",
-					[req.query.pid, uid]
-				);
+			// check wether the post is from today / "accepts" comments
+			const post_date = await db_query<Pick<PostEntry, "date">>(
+				"SELECT date FROM posts WHERE pid = ?",
+				[req.query.pid]
+			);
 
-				if (data.length === 0) {
-					await db.query("INSERT INTO comments (pid, uid, text) VALUES (?, ?, ?)", [
-						req.query.pid,
-						uid,
-						body.text
-					]);
-
-					return send_comments(parseInt(req.query.pid));
-				} else {
-					return { status: HTTPStatus.Conflict, message: "user has already commented on post" };
-				}
-			} catch {
+			if (!post_date) {
 				return { status: HTTPStatus.InternalServerError };
 			}
+
+			if (format_date(new Date()) !== post_date[0].date) {
+				logger.log(`Can't add comment: post is not from today (pid=${req.query.pid})`);
+
+				return { status: HTTPStatus.Forbidden };
+			}
+
+			// check wether the user already posted
+			const data = await db_query<1>("SELECT 1 FROM comments WHERE pid = ? AND uid = ? LIMIT 1", [
+				req.query.pid,
+				uid
+			]);
+
+			if (!data) {
+				return { status: HTTPStatus.InternalServerError };
+			}
+
+			if (data.length === 0) {
+				await db_query("INSERT INTO comments (pid, uid, text) VALUES (?, ?, ?)", [
+					req.query.pid,
+					uid,
+					body.text
+				]);
+
+				return send_comments(req.query.pid);
+			} else {
+				logger.log(`Can't add comment: user has already commented on post (pid=${req.query.pid})`);
+
+				return { status: HTTPStatus.Conflict };
+			}
 		} else {
+			if (!is_number_string(req.query.pid)) {
+				logger.warn("query is missing 'pid'");
+			} else if (typeof uid !== "number") {
+				logger.warn("body is missing 'uid'");
+			} else if (typeof body.text !== "string") {
+				logger.warn("body is missing 'text'");
+			}
+
 			return { status: HTTPStatus.BadRequest };
 		}
 	}
 
+	/**
+	 * Delete a comment from the database
+	 * @param req Request
+	 * @returns client-response-message
+	 */
 	async function delete_comment(req: Request): Promise<Message> {
 		if (await check_admin(req)) {
-			const body = req.body as Body;
-			if (typeof body.cid === "number" && typeof body.cid === "number") {
-				try {
-					await db.query("DELETE FROM comments WHERE cid = ?", [body.cid]);
-
-					return { status: HTTPStatus.OK };
-				} catch {
+			if (is_number_string(req.query.cid)) {
+				if (!(await db_query("DELETE FROM comments WHERE cid = ?", [req.query.cid]))) {
 					return { status: HTTPStatus.InternalServerError };
+				} else {
+					return { status: HTTPStatus.OK };
 				}
 			} else {
+				logger.warn("query is missing 'cid'");
+
 				return { status: HTTPStatus.BadRequest };
 			}
 		} else {
+			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
+
 			return { status: HTTPStatus.Unauthorized };
 		}
 	}
 
+	/**
+	 * add an answer to a comment
+	 * @param req Request
+	 * @returns client-response-message
+	 */
 	async function add_answer(req: Request): Promise<Message> {
 		if (await check_admin(req)) {
-			logger.trace("add_answer: admin-check succesful");
-
 			const body = req.body as Body;
 
-			if (query_is_string(req.query.cid) && typeof body.answer === "string") {
-				logger.trace("add_answer: arguments are valid");
+			if (is_number_string(req.query.cid) && typeof body.answer === "string") {
+				await db_query("UPDATE comments SET answer = ? WHERE cid = ?", [
+					body.answer,
+					req.query.cid
+				]);
 
-				try {
-					await db.query("UPDATE comments SET answer = ? WHERE cid = ?", [
-						body.answer,
-						req.query.cid
-					]);
-					logger.trace("add_answer: wrote answer to database");
+				const data = await db_query<CommentEntry>("SELECT * FROM comments WHERE cid = ?", [
+					req.query.cid
+				]);
 
-					const data: Comment[] = await db.query("SELECT * FROM comments WHERE cid = ?", [
-						req.query.cid
-					]);
-					logger.trace("add_answer: selected comment from database");
-
-					return { status: HTTPStatus.OK, json: data[0] };
-				} catch {
+				if (!data) {
 					return { status: HTTPStatus.InternalServerError };
+				}
+
+				return { status: HTTPStatus.OK, json: data[0] };
+			} else {
+				if (!is_number_string(req.query.cid)) {
+					logger.warn("query is missing 'cid'");
+				} else if (typeof body.answer !== "string") {
+					logger.warn("body is missing 'answer'");
+				}
+
+				return { status: HTTPStatus.BadRequest };
+			}
+		} else {
+			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
+
+			return { status: HTTPStatus.Forbidden };
+		}
+	}
+
+	/**
+	 * retrieve posts
+	 * @param req Request
+	 * @returns client-response-message
+	 */
+	async function get_posts(req: Request): Promise<Message> {
+		if (is_number_string(req.query.pid)) {
+			const pid = req.query.pid;
+
+			if (typeof pid === "string") {
+				const db_result = await db_query<PostEntry>("SELECT * FROM posts WHERE pid = ?", [pid]);
+
+				if (!db_result) {
+					return { status: HTTPStatus.InternalServerError };
+				}
+
+				// only send post, if the date allows it
+				if (new Date() >= new Date(db_result[0].date)) {
+					return { status: HTTPStatus.OK, json: db_result[0] };
+				} else {
+					return { status: HTTPStatus.Forbidden };
 				}
 			} else {
 				return { status: HTTPStatus.BadRequest };
 			}
 		} else {
-			return { status: HTTPStatus.Unauthorized };
-		}
-	}
+			if (await check_admin(req)) {
+				const data = await db_query<PostEntry>("SELECT * FROM posts");
 
-	async function get_posts(req: Request): Promise<Message> {
-		if (query_is_string(req.query.pid)) {
-			const pid = parseInt(req.query.pid);
+				if (!data) {
+					return { status: HTTPStatus.InternalServerError };
+				}
 
-			if (!isNaN(pid)) {
-				return send_posts(pid);
+				return { status: HTTPStatus.OK, json: data };
 			} else {
-				return { status: HTTPStatus.BadRequest };
+				logger.warn(`user with uid=${extract_uid(req)} is no admin`);
+
+				return { status: HTTPStatus.Unauthorized };
 			}
-		} else {
-			return send_posts(req);
 		}
 	}
 
+	/**
+	 * get the post-config (start-date and number of days)
+	 * @returns client-response-message
+	 */
 	function get_post_config(): Promise<Message> {
 		return Promise.resolve({
 			status: HTTPStatus.OK,
@@ -464,64 +709,106 @@ void (async () => {
 		});
 	}
 
+	/**
+	 * validates a login and sets a session-cookie with a login-token
+	 * @param req Request
+	 * @param res Response
+	 * @returns client-response-message
+	 */
 	async function login(req: Request, res: Response): Promise<Message> {
 		const body = req.body as Body;
 
 		if (typeof body.user === "string" && typeof body.password === "string") {
-			try {
-				const users: { uid: number; name: string; password: Buffer; admin: boolean | null }[] =
-					await db.query("SELECT * FROM users WHERE name = ? LIMIT 1", [body.user]);
+			const users = await db_query<UserEntry>("SELECT * FROM users WHERE name = ? LIMIT 1", [
+				body.user
+			]);
 
-				if (users.length === 0) {
-					return { status: HTTPStatus.Unauthorized };
-				} else {
-					const user = users[0];
-
-					if (await bcrypt.compare(body.password, user.password.toString("utf-8"))) {
-						const data: JWT = {
-							uid: user.uid
-						};
-
-						const token = jwt.sign(data, Config.jwt_secret);
-
-						const response = {
-							uid: user.uid,
-							name: user.name,
-							admin: !!user.admin
-						};
-
-						const cookie: SessionCookie = {
-							...response,
-							token
-						};
-
-						/* eslint-disable @typescript-eslint/naming-convention */
-						res.cookie("session", cookie, {
-							httpOnly: true,
-							sameSite: "strict",
-							maxAge: Config.session_expire
-						});
-						/* eslint-enable @typescript-eslint/naming-convention */
-
-						return {
-							status: HTTPStatus.OK,
-							json: {
-								...response,
-								logged_in: true
-							}
-						};
-					} else {
-						return { status: HTTPStatus.Unauthorized };
-					}
-				}
-			} catch {
+			if (!users) {
 				return { status: HTTPStatus.InternalServerError };
+			} else if (users.length === 0) {
+				logger.log(`user with name '${body.user}' doesn't exist`);
+
+				return { status: HTTPStatus.Unauthorized };
+			} else {
+				const user = users[0];
+
+				let password_hash_result: boolean;
+
+				try {
+					password_hash_result = bcrypt.compareSync(body.password, user.password.toString());
+				} catch (error) {
+					logger.error(
+						`password-hash-compare failed with error '${error instanceof Error ? error.message : "unkown error"}'`
+					);
+
+					return { status: HTTPStatus.InternalServerError };
+				}
+
+				if (password_hash_result) {
+					const data: JWT = {
+						uid: user.uid
+					};
+
+					let token: string;
+
+					try {
+						token = jwt.sign(data, Config.jwt_secret);
+					} catch (error) {
+						logger.error(
+							`jwt generation failed with error '${error instanceof Error ? error.message : "unkown error"}'`
+						);
+
+						return { status: HTTPStatus.InternalServerError };
+					}
+
+					const response = {
+						uid: user.uid,
+						name: user.name,
+						admin: !!user.admin
+					};
+
+					const cookie: SessionCookie = {
+						...response,
+						token
+					};
+
+					/* eslint-disable @typescript-eslint/naming-convention */
+					res.cookie("session", cookie, {
+						httpOnly: true,
+						sameSite: "strict",
+						maxAge: Config.session_expire
+					});
+					/* eslint-enable @typescript-eslint/naming-convention */
+
+					return {
+						status: HTTPStatus.OK,
+						json: {
+							...response,
+							logged_in: true
+						}
+					};
+				} else {
+					logger.debug(`rejected loging: invalid password (uid='${user.uid}'`);
+
+					return { status: HTTPStatus.Unauthorized };
+				}
 			}
 		} else {
+			if (typeof body.user !== "string") {
+				logger.warn("body is missing 'user'");
+			} else if (typeof body.password !== "string") {
+				logger.warn("body is missing 'password'");
+			}
+
 			return { status: HTTPStatus.BadRequest };
 		}
 	}
 
+	/**
+	 * sends-welcome information (user-information)
+	 * @param req Request
+	 * @returns client-response-message
+	 */
 	function welcome(req: Request): Message {
 		const session = extract_session_cookie(req);
 
@@ -546,7 +833,13 @@ void (async () => {
 		};
 	}
 
-	function logout(req: Request, res: Response): Promise<Message> {
+	/**
+	 * performs a logout / deletes the session-cookie
+	 * @param _req Request
+	 * @param res Resposne
+	 * @returns client-response-message
+	 */
+	function logout(_req: Request, res: Response): Promise<Message> {
 		res.clearCookie("session");
 
 		return Promise.resolve({
@@ -560,100 +853,109 @@ void (async () => {
 		});
 	}
 
-	async function send_users(): Promise<Message> {
-		const data_raw: { uid: number; name: string; admin: number }[] = await db.query(
+	/**
+	 * returns all the users in the database
+	 * @returns client-response-message
+	 */
+	async function get_users(): Promise<Message> {
+		const data_raw = await db_query<Omit<UserEntry, "password">>(
 			"SELECT uid, name, admin FROM users"
 		);
 
-		const data: { uid: number; name: string; admin: boolean }[] = data_raw.map((user) => {
-			return {
-				...user,
-				admin: Boolean(user.admin)
-			};
-		});
+		if (!data_raw) {
+			return { status: HTTPStatus.InternalServerError };
+		}
+
+		const data: (Omit<(typeof data_raw)[0], "admin"> & { admin: boolean })[] = data_raw.map(
+			(user) => {
+				return {
+					...user,
+					admin: Boolean(user.admin)
+				};
+			}
+		);
 
 		return { status: HTTPStatus.OK, json: data };
 	}
 
+	/**
+	 * returns all comments in the database
+	 * @param req Request
+	 * @returns client-response-message
+	 */
 	async function get_comments(req: Request): Promise<Message> {
 		if (typeof req.query.pid === "string") {
-			const pid = parseInt(req.query.pid);
-
-			if (!isNaN(pid)) {
-				return send_comments(pid);
+			if (is_number_string(req.query.pid)) {
+				return send_comments(req.query.pid);
 			} else {
 				return { status: HTTPStatus.BadRequest };
 			}
 		} else {
+			logger.warn("query is missing 'pid'");
+
 			return send_comments(req);
 		}
 	}
 
-	async function send_posts(req: Request): Promise<Message>;
-	async function send_posts(pid: number): Promise<Message>;
-	async function send_posts(req_pid: Request | number): Promise<Message> {
-		let data: PostsEntry[] | PostsEntry;
-
-		// a specific post is requested
-		if (typeof req_pid === "number") {
-			const pid = req_pid;
-
-			const db_result: PostsEntry[] = await db.query("SELECT * FROM posts WHERE pid = ?", [pid]);
-
-			// only send post, if the date allows it
-			if (new Date() >= new Date(db_result?.[0].date)) {
-				data = db_result[0];
-			} else {
-				return { status: HTTPStatus.Forbidden };
-			}
-		} else {
-			// no pid is give, try to send all posts
-			const req = req_pid;
-
-			if (await check_admin(req)) {
-				data = await db.query("SELECT * FROM posts");
-			} else {
-				return { status: HTTPStatus.Unauthorized };
-			}
-		}
-
-		if (data !== undefined) {
-			return { status: HTTPStatus.OK, json: data };
-		} else {
-			return { status: HTTPStatus.InternalServerError };
-		}
-	}
-
+	/**
+	 * send all comments in the database
+	 * @param req Request
+	 * @returns client-resposne-message
+	 */
 	async function send_comments(req: Request): Promise<Message>;
-	async function send_comments(pid: number): Promise<Message>;
-	async function send_comments(req_pid: Request | number): Promise<Message> {
-		let data: Record<string, unknown>[];
+	/**
+	 * send all comments of the post
+	 * @param pid pid of the post
+	 * @returns client-response-message
+	 */
+	async function send_comments(pid: string): Promise<Message>;
+	/**
+	 * send all comments in the database or for the post
+	 * @param req_pid Request or pid of the post
+	 * @returns client-response-meesage
+	 */
+	async function send_comments(req_pid: Request | string): Promise<Message> {
+		let data;
 
-		if (typeof req_pid === "number") {
+		if (typeof req_pid === "string") {
 			const pid = req_pid;
 
 			// get the date of the post
-			const db_result: { date: string }[] = await db.query("SELECT date FROM posts WHERE pid = ?", [
-				pid
-			]);
+			const db_result = await db_query<Pick<PostEntry, "date">>(
+				"SELECT date FROM posts WHERE pid = ?",
+				[pid]
+			);
+
+			if (!db_result) {
+				return { status: HTTPStatus.InternalServerError };
+			}
 
 			// only send post, if the date allows it
 			if (new Date() >= new Date(db_result[0].date)) {
-				data = await db.query("SELECT * FROM comments WHERE pid=? ORDER BY cid DESC", [pid]);
+				data = await db_query<CommentEntry>(
+					"SELECT * FROM comments WHERE pid=? ORDER BY cid DESC",
+					[pid]
+				);
 			} else {
+				logger.log(
+					`denied send-comments: requested post is in the future (date='${db_result[0].date}')`
+				);
+
 				return { status: HTTPStatus.Forbidden };
 			}
 		} else {
 			const req = req_pid;
 
 			if (await check_admin(req)) {
-				data = await db.query("SELECT * FROM comments ORDER BY cid DESC");
+				data = await db_query<CommentEntry>("SELECT * FROM comments ORDER BY cid DESC");
 			} else {
+				logger.warn(`user with uid=${extract_uid(req)} is no admin`);
+
 				return { status: HTTPStatus.Unauthorized };
 			}
 		}
 
-		if (data !== undefined) {
+		if (data !== false) {
 			return { status: HTTPStatus.OK, json: data };
 		} else {
 			return { status: HTTPStatus.InternalServerError };

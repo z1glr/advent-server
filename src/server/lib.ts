@@ -1,7 +1,12 @@
 import Ajv from "ajv";
 import formatsPlugin from "ajv-formats";
 
-export function query_is_string(value: qs.ParsedQs["string"]): value is string {
+/**
+ * checks wether a string can be parsed as an integer
+ * @param value strint to be checked
+ * @returns wether strin can be parsed as integer
+ */
+export function is_number_string(value: qs.ParsedQs["string"]): value is string {
 	if (typeof value === "string") {
 		return !isNaN(Number(value));
 	} else {
@@ -64,9 +69,26 @@ export enum HTTPStatus {
 	NetworkAuthenticationRequired = 511
 }
 
+/**
+ * wrap an asynchronous function into an iiaf (immediately invoked asynchronus function)
+ * @param f asynchronous function for wrapping
+ */
 export function iiaf_wrap(f: () => Promise<void>) {
 	void f();
 }
 
 export const ajv = new Ajv();
 formatsPlugin(ajv);
+
+/**
+ * format a date into a string in the style yyyy-mm-dd
+ * @param dt date-object
+ * @returns formatted date
+ */
+export function format_date(dt: Date): string {
+	return [
+		dt.getFullYear().toString(),
+		(dt.getMonth() + 1).toString().padStart(2, "0"),
+		dt.getDate().toString().padStart(2, "0")
+	].join("-");
+}

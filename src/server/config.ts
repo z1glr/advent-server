@@ -3,7 +3,7 @@ import { Levels } from "log4js";
 import ms from "ms";
 import yaml from "yaml";
 
-import config_schema from "../../config_schema.json";
+import config_schema from "../../config.schema.json";
 import { ajv } from "./lib";
 import { ErrorObject, JSONSchemaType } from "ajv";
 

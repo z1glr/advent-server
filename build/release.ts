@@ -1,4 +1,4 @@
-import { IReporterCliConfiguration, IReporterConfiguration } from "@weichwarenprojekt/license-reporter";
+import { IReporterCliConfiguration } from "@weichwarenprojekt/license-reporter";
 import archiver from "archiver";
 import { execSync } from "child_process";
 import fs from "fs";
@@ -6,13 +6,15 @@ import path from "path";
 import tmp from "tmp";
 import yaml from "yaml";
 import jsf, { Schema } from "json-schema-faker";
+import Ajv, { JSONSchemaType } from "ajv";
+import formatsPlugin from "ajv-formats";
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 interface Config {
 	release_dir: string;
 	builds: Record<string, { script: string; files: string[]; entry?: string; }>;
 	license_report: {
-		config: Partial<IReporterCliConfiguration> & Pick<IReporterConfiguration, "ignore">;
+		config: Partial<IReporterCliConfiguration> & Pick<IReporterCliConfiguration, "ignore">;
 		path: string;
 		license: { path: string; destination?: string; }
 	};
@@ -22,55 +24,79 @@ interface Config {
 	keep?: boolean;
 }
 
-const config: Config = {
-	release_dir: "dist",
-	builds: {
-		server: {
-			script: "build",
-			files: ["server"],
-			entry: "server.js"
-		},
-		setup: {
-			script: "setup-build",
-			files: ["setup"],
-			entry: "setup.js"
-		}
-	},
-	external_packages: [
-		"bcrypt"
-	],
-	configs: { server: { schema: "config_schema.json", dest: "config_default.yaml" }},
-	license_report: {
-		config: {
-			output: "build/3rdpartylicenses.json",
-			ignore: ["dist/*"],
-			overrides: []
-		},
-		path: "licenses",
-		license: { path: "LICENSE" }
-	}
-};
+const ajv = new Ajv();
+formatsPlugin(ajv);
+const validate_config = ajv.compile(JSON.parse(fs.readFileSync(path.join(__dirname, "build_config.schema.json"), "utf-8")) as JSONSchemaType<Config>);
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/naming-convention
+const _config_raw = yaml.parse(fs.readFileSync(path.join(__dirname, "build_config.yaml"), "utf-8"));
+if (!validate_config(_config_raw)) {
+	const errors = validate_config.errors?.map((error) => `${error.instancePath}: ${error.message}`)
+		.join(", ");
+
+	console.error(`invalid config file: ${errors}`);
+
+	process.exit(1);
+}
+
+const config = _config_raw;
+
+config.license_report.config.output ??= "build/3rdpartylicenses.json";
 const build_dir = path.join(config.release_dir, "build");
 const release_dir_latest = path.join(config.release_dir, "latest");
 
 // helper-functions
+/**
+ * copy a file into the build-directory
+ * @param file path to the file
+ * @param dest destination relative to the build-directory
+ */
 function copy_build_file (file: string, dest?: string) {
 	fs.copyFileSync(file, path.join(build_dir, dest ?? path.basename(file)));
 }
+
+/**
+ * copy a directory into the build-directory
+ * @param dir path to the file
+ * @param dest destination relative to the build-directory
+ * @param args optional. arguments for fs.cpSync
+ */
 function copy_build_dir (dir: string, dest?: string, args?: fs.CopySyncOptions) {
 	fs.cpSync(dir, path.join(build_dir, dest ?? path.basename(dir)), { recursive: true, ...args });
 }
+
+/**
+ * copy a file into the release-directory
+ * @param file path to the file
+ * @param dest destination relative to the release-directory
+ */
 function copy_release_file (file: string, dest?: string) {
 	fs.copyFileSync(file, path.join(release_dir_latest, dest ?? path.basename(file)));
 }
+
+/**
+ * copy a directory into the release-directory
+ * @param dir path to the file
+ * @param dest destination relative to the release-directory
+ * @param args optional. arguments for fs.cpSync
+ */
 function copy_release_dir (dir: string, dest?: string, args?: fs.CopySyncOptions) {
 	fs.cpSync(dir, path.join(release_dir_latest, dest ?? path.basename(dir)), { recursive: true, ...args });
 }
+
+/**
+ * copy a node-module into the release-directory
+ * @param name name of the node_module
+ */
 function copy_module (name: string) {
 	console.log(`\t\t'${name}'`);
 	copy_release_dir(`node_modules/${name}`, `node_modules/${name}/`);
 };
 
+/**
+ * (try to) delete a directory and create it again
+ * @param pth path of the directory
+ */
 function recreate_directory(pth: string) {
 	console.log(`\t'${pth}'`);
 
@@ -81,6 +107,11 @@ function recreate_directory(pth: string) {
 	fs.mkdirSync(pth, { recursive: true });
 }
 
+/**
+ * create a bash / cmd launch-script for a node-program
+ * @param pth path of the programm in the build-directory
+ * @param name name for the created file
+ */
 function create_launch_script(pth: string, name: string) {
 	const destination = path.parse(pth).name;
 
@@ -149,6 +180,7 @@ Object.entries(config.builds).forEach(([name, build]) => {
 	console.log(`\t${name}`);
 	execSync(`npm run ${build.script}`);
 });
+console.log();
 
 // generate config-files from schemas
 if (config.configs !== undefined) {
@@ -213,7 +245,7 @@ license_reporter_config_ts_file.removeCallback();
 interface License { name: string; licenseText: string }
 
 console.log("\tLoading licence-report");
-const licenses_orig = JSON.parse(fs.readFileSync(config.license_report.config.output ?? "build/3rdpartylicenses.json", "utf-8")) as License[];
+const licenses_orig = JSON.parse(fs.readFileSync(config.license_report.config.output, "utf-8")) as License[];
 
 const licenses: Record<string, License> = {};
 
@@ -221,7 +253,7 @@ licenses_orig.forEach((pack) => {
 	licenses[pack.name] = pack;
 });
 
-console.log("Creating licence-directory");
+console.log("\tCreating licence-directory");
 fs.mkdirSync(path.join(release_dir_latest, config.license_report.path));
 
 console.log("\tWriting licences");
@@ -239,21 +271,23 @@ Object.keys(package_json.dependencies).forEach((pack) => {
 	}
 });
 
-console.log(`Writing ${package_json.name}-licene`)
+console.log(`\tWriting ${package_json.name}-licene`)
 copy_release_file(config.license_report.license.path, config.license_report.license.destination);
 
 console.log();
 console.log(`Copying files to '${release_dir_latest}'`);
 
 // get the node executable
-console.log(`\tnode executable`);
-copy_release_file(process.execPath, exec_name);
+if (startup_script_builds.length > 0) {
+	console.log(`\tnode executable`);
+	copy_release_file(process.execPath, exec_name);
+}
 
 Object.entries(config.builds).forEach(([name, build]) => {
-	console.log(`\t${name}: '${path.join(build_dir, build.files.toString())}'`);
-
 	build.files.forEach(file => {
 		const file_path = path.join(build_dir, file);
+		
+		console.log(`\t${name}: '${file_path}'`);
 
 		// create the parent directories
 		const parent_dir = path.parse(file_path).dir;
@@ -295,7 +329,11 @@ void archive.finalize();
 if (!config.keep) {
 	console.log();
 
-	console.log(`Removing build files '${build_dir}'`);
+	console.log("Removing build files");
 
+	console.log(`\t${build_dir}`);
 	fs.rmSync(build_dir, { recursive: true, force: true });
+
+	console.log(`\t${config.license_report.config.output}`);
+	fs.rmSync(config.license_report.config.output);
 }
