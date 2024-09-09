@@ -1,8 +1,10 @@
 import express, { Request, Response } from "express";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import mysql from "promise-mysql";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
+import multer from "multer";
+import path from "path";
 
 import Config from "./config";
 import { logger } from "./logger";
@@ -26,7 +28,7 @@ type Body = Record<string, unknown>;
 interface UserEntry {
 	uid: number;
 	name: string;
-	password: string;
+	password: Buffer;
 	admin: 0 | 1;
 }
 
@@ -53,6 +55,26 @@ void (async () => {
 
 	// connect to the database
 	const db = await mysql.createConnection(Config.database);
+
+	// setup multer to store files
+	const storage = multer.diskStorage({
+		destination: function (_req, _file, cb) {
+			cb(null, "uploads/");
+		},
+		filename: function (_req, file, cb) {
+			cb(null, Buffer.from(file.originalname, "latin1").toString("utf-8").replace(" ", "_"));
+		}
+	});
+
+	const upload = multer({
+		storage: storage,
+		// eslint-disable-next-line @typescript-eslint/naming-convention
+		fileFilter: (req: Request, _file, callback) => {
+			iiaf_wrap(async () => {
+				callback(null, await check_admin(req));
+			});
+		}
+	});
 
 	/**
 	 * wraps a db.query inside a try-catch and logs errors
@@ -165,6 +187,25 @@ void (async () => {
 			send_response(res, await logout(req, res));
 		});
 	});
+	app.post("/api/storage/upload", upload.single("file"), function (req: Request, res: Response) {
+		iiaf_wrap(async () => {
+			logger.log("HTTP POST request: /api/storage/upload");
+
+			//check wether the session-token is valid
+			const check_perm_res = check_permission(req);
+
+			// if the session-token is valid, proceed with the handler-function
+			if (check_perm_res) {
+				const response_values = await storage_upload(req);
+
+				send_response(res, response_values);
+			} else {
+				// invalid session-token
+				send_response(res, { status: HTTPStatus.Forbidden });
+			}
+		});
+	});
+	app.use("/api/storage/public", express.static(Config.server.upload_dir));
 
 	app.listen(Config.server.port);
 	logger.log("added API-endpoints");
@@ -177,6 +218,8 @@ void (async () => {
 	function send_response(res: Response, message: Message) {
 		// attach the returned status
 		res.status(message.status);
+
+		// res.set("Content-Type", "charset=UTF-8")
 
 		// send (if available) the JSON object
 		if (message.json !== undefined) {
@@ -676,9 +719,15 @@ void (async () => {
 				if (new Date() >= new Date(db_result[0].date)) {
 					return { status: HTTPStatus.OK, json: db_result[0] };
 				} else {
+					logger.log(
+						`denied send-posts: requested post is in the future (date='${db_result[0].date}')`
+					);
+
 					return { status: HTTPStatus.Forbidden };
 				}
 			} else {
+				logger.warn("query is missing 'pid'");
+
 				return { status: HTTPStatus.BadRequest };
 			}
 		} else {
@@ -735,7 +784,7 @@ void (async () => {
 				let password_hash_result: boolean;
 
 				try {
-					password_hash_result = bcrypt.compareSync(body.password, user.password.toString());
+					password_hash_result = bcrypt.compareSync(body.password, user.password.toString("utf-8"));
 				} catch (error) {
 					logger.error(
 						`password-hash-compare failed with error '${error instanceof Error ? error.message : "unkown error"}'`
@@ -788,7 +837,7 @@ void (async () => {
 						}
 					};
 				} else {
-					logger.debug(`rejected loging: invalid password (uid='${user.uid}'`);
+					logger.debug(`rejected login: invalid password (uid='${user.uid}')`);
 
 					return { status: HTTPStatus.Unauthorized };
 				}
@@ -930,7 +979,7 @@ void (async () => {
 				return { status: HTTPStatus.InternalServerError };
 			}
 
-			// only send post, if the date allows it
+			// only send comment, if the date allows it
 			if (new Date() >= new Date(db_result[0].date)) {
 				data = await db_query<CommentEntry>(
 					"SELECT * FROM comments WHERE pid=? ORDER BY cid DESC",
@@ -959,6 +1008,31 @@ void (async () => {
 			return { status: HTTPStatus.OK, json: data };
 		} else {
 			return { status: HTTPStatus.InternalServerError };
+		}
+	}
+
+	/**
+	 * handle a request for a media upload
+	 * @param req Request
+	 * @returns client-response-message
+	 */
+	async function storage_upload(req: Request): Promise<Message> {
+		if (await check_admin(req)) {
+			return {
+				status: HTTPStatus.OK,
+				json: {
+					url: path
+						.join(
+							"/api/storage/public/",
+							Buffer.from(req.file?.originalname ?? "", "latin1").toString("utf-8")
+						)
+						.replace(" ", "_")
+				}
+			};
+		} else {
+			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
+
+			return { status: HTTPStatus.Forbidden };
 		}
 	}
 })();

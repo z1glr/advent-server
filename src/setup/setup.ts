@@ -1,5 +1,5 @@
 import mysql from "promise-mysql";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 
 import Config from "../server/config";
 

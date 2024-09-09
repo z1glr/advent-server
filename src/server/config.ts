@@ -27,6 +27,7 @@ export interface ConfigYAML {
 	};
 	server: {
 		port: number;
+		upload_dir: string;
 	};
 }
 

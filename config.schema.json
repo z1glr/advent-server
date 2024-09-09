@@ -99,10 +99,15 @@
                     "type": "integer",
 					"minimum": 0,
 					"maximum": 65535
-                }
+                },
+				"upload_dir": {
+					"type": "string",
+					"pattern": "^[^ ]+$"
+				}
             },
             "required": [
-                "port"
+                "port",
+				"upload_dir"
             ],
             "additionalProperties": false
         }
