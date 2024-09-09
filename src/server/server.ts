@@ -940,8 +940,6 @@ void (async () => {
 				return { status: HTTPStatus.BadRequest };
 			}
 		} else {
-			logger.warn("query is missing 'pid'");
-
 			return send_comments(req);
 		}
 	}
