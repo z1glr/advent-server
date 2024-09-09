@@ -451,11 +451,12 @@ void (async () => {
 			) {
 				const uid = req.query.uid;
 
+				// prevent from demote self
 				if (await is_self_or_admin_user(uid, req)) {
 					body.admin = true;
 				}
 
-				// only save the password, if it isn't empty
+				// only save the password, if it isn't empty and prevent others from changing the admin-users password
 				if (
 					body.password.length > 0 &&
 					((await is_admin_user(req)) || !(await is_admin_user(uid)))
