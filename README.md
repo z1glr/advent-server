@@ -1,10 +1,10 @@
 # todo
 - catch more stuff
 - build-script: create init-script which generates config etc
-- multer in config for directory
 - file-browser for file management
-- admin: comments: [2024-09-09T04:09:05.014] [WARN] default - query is missing 'pid'
-
+- debug freezing in supervisorctl
+- function which takes array / object req.query / req.body and check typeof x === y
+- file-browser: guard file-access to public directory
 
 # admin-passwort
 F0p9ü7+IÖ$TäuKF+UYÄf

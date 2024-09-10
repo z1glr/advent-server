@@ -38,7 +38,7 @@ void (async () => {
 	/**
 	 * format a date object into the format yyyy-mm-dd
 	 * @param dt date-object
-	 * @returns
+	 * @returns yyyy-mm-dd
 	 */
 	function format_date(dt: Date): string {
 		return [

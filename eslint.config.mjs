@@ -22,11 +22,9 @@ export default [
 		"plugin:@typescript-eslint/recommended-type-checked",
 		"prettier",
 	),
-	jsdoc.configs['flat/recommended-typescript'],
 	{
 		plugins: {
-			"@typescript-eslint": typescriptEslint,
-			jsdoc
+			"@typescript-eslint": typescriptEslint
 		},
 
 		languageOptions: {
@@ -73,15 +71,33 @@ export default [
 					varsIgnorePattern: "^_",
 					argsIgnorePattern: "^_",
 					caughtErrorsIgnorePattern: "^_"
-			}],
-			"jsdoc/require-description": "warn"
+			}]
 		},
-	},{
+	},
+	{
 		ignores: [
 			"eslint.config.mjs",
 			"dist/*",
 			"out/*",
 			"build/*.js"
 		]
+	},
+	jsdoc.configs["flat/recommended-typescript"],
+	{
+		files: ["src/**/*.ts"],
+		plugins: {
+			jsdoc
+		},
+		rules: {
+			"jsdoc/require-jsdoc": [
+				"warn",
+				{
+				require: {
+					MethodDefinition: true,
+					ClassDeclaration: true,
+				},
+				},
+			],
+		}
 	}
 ];
