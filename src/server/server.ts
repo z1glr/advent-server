@@ -12,7 +12,7 @@ import { logger } from "./logger";
 import {
 	Body,
 	check_admin,
-	check_path_escape,
+	check_path_escapes,
 	check_permission,
 	db_query,
 	extract_session_cookie,
@@ -65,7 +65,7 @@ void (async () => {
 	// setup multer to store files
 	const storage = multer.diskStorage({
 		destination: function (_req, _file, cb) {
-			cb(null, Config.get_upload_dir(""));
+			cb(null, Config.get_upload_dir());
 		},
 		filename: function (_req, file, cb) {
 			cb(null, Buffer.from(file.originalname, "latin1").toString("utf-8").replace(" ", "_"));
@@ -79,7 +79,7 @@ void (async () => {
 			iiaf_wrap(async () => {
 				callback(
 					null,
-					(await check_admin(db, req)) && check_path_escape(req.file?.originalname ?? "")
+					(await check_admin(db, req)) && check_path_escapes(req.file?.originalname ?? "")
 				);
 			});
 		}

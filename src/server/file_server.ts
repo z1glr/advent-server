@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs";
 // import mime from "mime-types";
-import { Request, Response } from "express";
+import { IRouter, IRouterMatcher, Request, Response } from "express";
 import { Express } from "express";
 import mysql from "promise-mysql";
 
@@ -10,7 +10,7 @@ import Config from "./config";
 import {
 	Body,
 	check_admin,
-	check_path_escape as check_path_escapes,
+	check_path_escapes,
 	check_permission,
 	HTTPStatus,
 	iiaf_wrap,
@@ -55,31 +55,23 @@ export default class FileServer {
 		this.db = db;
 
 		// map the individual method-functions into an object
-		const function_map: Pick<
-			{
-				[K in Methods]: (path: string, callback: (req: Request, res: Response) => void) => void;
-			},
-			"GET" | "POST"
-		> = {
+		const function_map: Pick<Record<Methods, IRouterMatcher<IRouter>>, "GET" | "POST"> = {
 			/* eslint-disable @typescript-eslint/naming-convention */
 			GET: app.get.bind(app),
 			POST: app.post.bind(app)
 			/* eslint-enable @typescript-eslint/naming-convention */
 		};
 
-		// add the listeners
-		Object.entries(this.endpoint_map).forEach(([method, paths]) => {
-			// iterate over the different specified methods
-			Object.entries(paths).forEach(([path, func]) => {
-				// register the individual end-points
-				function_map[method as "GET" | "POST"]("/api/storage/public" + path, (req, res) => {
+		(Object.entries(function_map) as ["GET" | "POST", IRouterMatcher<IRouter>][]).forEach(
+			([method, router]) => {
+				router("/api/storage/browse", (req, res) => {
 					iiaf_wrap(async () => {
 						logger.log(`HTTP ${method} request: ${req.url}`);
 
 						//check wether the session-token is valid and the user is an admin
 						if (check_permission(req) && (await check_admin(db, req))) {
-							if (is_string(req.query.q)) {
-								const message = func(req);
+							if (is_string(req.query.q) && this.endpoint_map[method][req.query.q] !== undefined) {
+								const message = this.endpoint_map[method][req.query.q](req);
 
 								send_response(res, message);
 							} else {
@@ -93,8 +85,8 @@ export default class FileServer {
 						}
 					});
 				});
-			});
-		});
+			}
+		);
 	}
 
 	/**
@@ -102,7 +94,7 @@ export default class FileServer {
 	 * @param req Request
 	 * @returns client-response-message
 	 */
-	protected get_files(req: Request): Message {
+	private get_files(req: Request): Message {
 		// if there is no adapter specified, use PUBLIC
 		const adapter =
 			is_string(req.query.adapter) && req.query.adapter !== "null" ? req.query.adapter : "PUBLIC";
@@ -129,7 +121,7 @@ export default class FileServer {
 				}
 			};
 		} else {
-			logger.warn(`request tried to escape it's directory (pth='${pth}'`);
+			logger.warn(`request tried to escape its directory (pth='${pth}')`);
 
 			return {
 				status: HTTPStatus.Forbidden
@@ -142,7 +134,7 @@ export default class FileServer {
 	 * @param req Request
 	 * @returns client-response-message
 	 */
-	protected get_preview(req: Request): Message {
+	private get_preview(req: Request): Message {
 		if (is_string(req.query.path) && is_string(req.query.adapter)) {
 			return {
 				status: HTTPStatus.OK,
@@ -167,7 +159,7 @@ export default class FileServer {
 	 * @param req Request
 	 * @returns client-response-message
 	 */
-	protected get_subfolders(req: Request): Message {
+	private get_subfolders(req: Request): Message {
 		const query = req.query;
 		if (is_string(query.adapter) && is_string(query.path)) {
 			const adapter = query.adapter;
@@ -208,7 +200,7 @@ export default class FileServer {
 	 * @param req Reqeust
 	 * @returns client-response-message
 	 */
-	protected get_download(req: Request): Message {
+	private get_download(req: Request): Message {
 		return this.get_preview(req);
 	}
 
@@ -217,7 +209,7 @@ export default class FileServer {
 	 * @param req Request
 	 * @returns client-response-message
 	 */
-	protected create_new_folder(req: Request): Message {
+	private create_new_folder(req: Request): Message {
 		const body = req.body as Body;
 
 		if (
@@ -252,7 +244,7 @@ export default class FileServer {
 	 * @param req Request
 	 * @returns client-response-message
 	 */
-	protected rename_file(req: Request): Message {
+	private rename_file(req: Request): Message {
 		const query = req.query;
 		const body = req.body as Body;
 
@@ -283,7 +275,7 @@ export default class FileServer {
 	 * @param req Request
 	 * @returns client-response-message
 	 */
-	protected rename_files(req: Request): Message {
+	private rename_files(req: Request): Message {
 		const body = req.body as Body;
 
 		if (is_string(req.query.adapter) && is_string(body.item) && is_items_array(body.items)) {
@@ -317,7 +309,7 @@ export default class FileServer {
 	 * @param req Request
 	 * @returns client-response-message
 	 */
-	protected post_delete(req: Request): Message {
+	private post_delete(req: Request): Message {
 		const query = req.query;
 		const body = req.body as Body;
 
@@ -358,7 +350,7 @@ export default class FileServer {
  * @returns path without adapter
  */
 function extract_path(pth: string, adapter: string): string {
-	return pth.replace(`${adapter}:/`, "");
+	return `${pth.replace(`${adapter}://`, "")}`;
 }
 
 /**
@@ -379,7 +371,7 @@ function to_vuefinder_resource(adapter: string, pth: string, info: fs.Stats) {
 
 	const data = {
 		type: info.isDirectory() ? "dir" : "file",
-		path: `${adapter}:/${pth}`,
+		path: `${adapter}://${pth}`,
 		visibility: "public",
 		last_modified: info.mtime.getTime() / 1000,
 		mime_type: mime_type !== false ? mime_type : "text/plain",

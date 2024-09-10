@@ -3,7 +3,6 @@ import formatsPlugin from "ajv-formats";
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import mysql from "promise-mysql";
-import path from "path";
 
 import { logger } from "./logger";
 import Config from "./config";
@@ -321,8 +320,9 @@ export async function db_query<T = unknown>(
  * @param pth path to check
  * @returns wether pth tries to escape
  */
-export function check_path_escape(pth: string): boolean {
-	const resolved_path = path.resolve(pth);
+export function check_path_escapes(pth: string): boolean {
+	const upload_dir = Config.get_upload_dir();
+	const pth_resolved = Config.get_upload_dir(pth);
 
-	return resolved_path.startsWith("..") && path.isAbsolute(resolved_path);
+	return pth_resolved.includes(upload_dir);
 }

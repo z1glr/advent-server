@@ -138,8 +138,12 @@ class ConfigClass {
 	 * @param pth client-path
 	 * @returns local-path
 	 */
-	get_upload_dir(pth: string): string {
-		return path.join(this.server.upload_dir, pth);
+	get_upload_dir(pth?: string): string {
+		if (pth !== undefined) {
+			return path.resolve(this.server.upload_dir, pth);
+		} else {
+			return path.resolve(this.server.upload_dir);
+		}
 	}
 }
 
