@@ -12,6 +12,7 @@ import { logger } from "./logger";
 import {
 	Body,
 	check_admin,
+	check_path_escape,
 	check_permission,
 	db_query,
 	extract_session_cookie,
@@ -19,7 +20,10 @@ import {
 	format_date,
 	HTTPStatus,
 	iiaf_wrap,
+	is_boolean,
+	is_number,
 	is_number_string,
+	is_string,
 	JWT,
 	Message,
 	Methods,
@@ -51,14 +55,17 @@ void (async () => {
 	app.use(cookieParser());
 
 	// connect to the database
-	const db = await mysql.createConnection(Config.database);
+	const db = await mysql.createConnection({
+		...Config.database
+	});
 
-	const _file_server = new FileServer(app);
+	// initialize the file-server for vuefinder
+	const _file_server = new FileServer(app, db);
 
 	// setup multer to store files
 	const storage = multer.diskStorage({
 		destination: function (_req, _file, cb) {
-			cb(null, "uploads/");
+			cb(null, Config.get_upload_dir(""));
 		},
 		filename: function (_req, file, cb) {
 			cb(null, Buffer.from(file.originalname, "latin1").toString("utf-8").replace(" ", "_"));
@@ -70,7 +77,10 @@ void (async () => {
 		// eslint-disable-next-line @typescript-eslint/naming-convention
 		fileFilter: (req: Request, _file, callback) => {
 			iiaf_wrap(async () => {
-				callback(null, await check_admin(db, req));
+				callback(
+					null,
+					(await check_admin(db, req)) && check_path_escape(req.file?.originalname ?? "")
+				);
 			});
 		}
 	});
@@ -226,7 +236,7 @@ void (async () => {
 	async function is_admin_user(uid_req: string | Request): Promise<boolean> {
 		let result;
 
-		if (typeof uid_req === "string") {
+		if (is_string(uid_req)) {
 			result = await db_query<1>(db, "SELECT 1 FROM users WHERE uid = ? AND name = admin", [
 				uid_req
 			]);
@@ -278,14 +288,14 @@ void (async () => {
 		if (await check_admin(db, req)) {
 			const body = req.body as Body;
 
-			if (typeof body.user === "string" && typeof body.password === "string") {
+			if (is_string(body.user) && is_string(body.password)) {
 				// check, wether the user already exists
 				const data = await db_query<1>(db, "SELECT 1 FROM users WHERE name = ?", [body.user]);
 
 				if (data && data.length === 0) {
 					const password_hash = await hash_password(body.password);
 
-					if (typeof password_hash === "string") {
+					if (is_string(password_hash)) {
 						await db_query(db, "INSERT INTO users (name, password) VALUES (?, ?)", [
 							body.user,
 							password_hash
@@ -301,9 +311,10 @@ void (async () => {
 					return { status: HTTPStatus.Conflict, message: "user already exists" };
 				}
 			} else {
-				if (typeof body.user !== "string") {
+				if (!is_string(body.user)) {
 					logger.warn("body is missing 'user'");
-				} else {
+				}
+				if (!is_string(body.password)) {
 					logger.warn("body is missing 'password'");
 				}
 
@@ -324,11 +335,7 @@ void (async () => {
 	async function modify_user(req: Request): Promise<Message> {
 		if (await check_admin(db, req)) {
 			const body = req.body as Body;
-			if (
-				is_number_string(req.query.uid) &&
-				typeof body.admin === "boolean" &&
-				typeof body.password === "string"
-			) {
+			if (is_number_string(req.query.uid) && is_boolean(body.admin) && is_string(body.password)) {
 				const uid = req.query.uid;
 
 				// prevent from demote self
@@ -343,7 +350,7 @@ void (async () => {
 				) {
 					const password_hash = await hash_password(body.password);
 
-					if (typeof password_hash === "string") {
+					if (is_string(password_hash)) {
 						await db_query(db, "UPDATE users SET password = ?, admin = ? WHERE uid = ?", [
 							password_hash,
 							body.admin,
@@ -363,9 +370,11 @@ void (async () => {
 			} else {
 				if (!is_number_string(req.query.uid)) {
 					logger.warn("query is missing 'uid");
-				} else if (typeof body.admin !== "boolean") {
+				}
+				if (!is_string(body.admin)) {
 					logger.warn("body is missing 'admin'");
-				} else if (typeof body.password !== "string") {
+				}
+				if (!is_string(body.password)) {
 					logger.warn("body is missing 'password'");
 				}
 
@@ -424,7 +433,7 @@ void (async () => {
 		if (await check_admin(db, req)) {
 			const body = req.body as Body;
 
-			if (typeof body.text === "string" && typeof req.query.pid === "string") {
+			if (is_string(body.text) && is_string(req.query.pid)) {
 				if (
 					!(await db_query(db, "UPDATE posts SET content = ? WHERE pid = ?", [
 						body.text,
@@ -436,9 +445,10 @@ void (async () => {
 
 				return { status: HTTPStatus.OK };
 			} else {
-				if (typeof body.text !== "string") {
+				if (!is_string(body.text)) {
 					logger.warn("query is missing 'pid'");
-				} else {
+				}
+				if (!is_string(body.text)) {
 					logger.warn("body is missing 'text'");
 				}
 
@@ -461,11 +471,7 @@ void (async () => {
 
 		const body = req.body as Body;
 
-		if (
-			is_number_string(req.query.pid) &&
-			typeof uid === "number" &&
-			typeof body.text === "string"
-		) {
+		if (is_number_string(req.query.pid) && is_number(uid) && is_string(body.text)) {
 			// check wether the post is from today / "accepts" comments
 			const post_date = await db_query<Pick<PostEntry, "date">>(
 				db,
@@ -510,9 +516,11 @@ void (async () => {
 		} else {
 			if (!is_number_string(req.query.pid)) {
 				logger.warn("query is missing 'pid'");
-			} else if (typeof uid !== "number") {
+			}
+			if (!is_number(uid)) {
 				logger.warn("body is missing 'uid'");
-			} else if (typeof body.text !== "string") {
+			}
+			if (!is_string(body.text)) {
 				logger.warn("body is missing 'text'");
 			}
 
@@ -554,7 +562,7 @@ void (async () => {
 		if (await check_admin(db, req)) {
 			const body = req.body as Body;
 
-			if (is_number_string(req.query.cid) && typeof body.answer === "string") {
+			if (is_number_string(req.query.cid) && is_string(body.answer)) {
 				await db_query(db, "UPDATE comments SET answer = ? WHERE cid = ?", [
 					body.answer,
 					req.query.cid
@@ -572,7 +580,8 @@ void (async () => {
 			} else {
 				if (!is_number_string(req.query.cid)) {
 					logger.warn("query is missing 'cid'");
-				} else if (typeof body.answer !== "string") {
+				}
+				if (!is_string(body.answer)) {
 					logger.warn("body is missing 'answer'");
 				}
 
@@ -594,7 +603,7 @@ void (async () => {
 		if (is_number_string(req.query.pid)) {
 			const pid = req.query.pid;
 
-			if (typeof pid === "string") {
+			if (is_string(pid)) {
 				const db_result = await db_query<PostEntry>(db, "SELECT * FROM posts WHERE pid = ?", [pid]);
 
 				if (!db_result) {
@@ -653,7 +662,7 @@ void (async () => {
 	async function login(req: Request, res: Response): Promise<Message> {
 		const body = req.body as Body;
 
-		if (typeof body.user === "string" && typeof body.password === "string") {
+		if (is_string(body.user) && is_string(body.password)) {
 			const users = await db_query<UserEntry>(db, "SELECT * FROM users WHERE name = ? LIMIT 1", [
 				body.user
 			]);
@@ -729,9 +738,10 @@ void (async () => {
 				}
 			}
 		} else {
-			if (typeof body.user !== "string") {
+			if (!is_string(body.user)) {
 				logger.warn("body is missing 'user'");
-			} else if (typeof body.password !== "string") {
+			}
+			if (!is_string(body.password)) {
 				logger.warn("body is missing 'password'");
 			}
 
@@ -820,7 +830,7 @@ void (async () => {
 	 * @returns client-response-message
 	 */
 	async function get_comments(req: Request): Promise<Message> {
-		if (typeof req.query.pid === "string") {
+		if (is_string(req.query.pid)) {
 			if (is_number_string(req.query.pid)) {
 				return send_comments(req.query.pid);
 			} else {
@@ -851,7 +861,7 @@ void (async () => {
 	async function send_comments(req_pid: Request | string): Promise<Message> {
 		let data;
 
-		if (typeof req_pid === "string") {
+		if (is_string(req_pid)) {
 			const pid = req_pid;
 
 			// get the date of the post

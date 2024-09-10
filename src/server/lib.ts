@@ -3,6 +3,7 @@ import formatsPlugin from "ajv-formats";
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import mysql from "promise-mysql";
+import path from "path";
 
 import { logger } from "./logger";
 import Config from "./config";
@@ -201,6 +202,9 @@ export function send_response(res: Response, message: Message) {
 	// send (if available) the JSON object
 	if (message.json !== undefined) {
 		res.json(message.json);
+	} else if (message.buffer !== undefined) {
+		res.setHeader("Content-Type", "application/octet-stream");
+		res.send(message.buffer);
 	} else {
 		// send with the message
 		res.send(message.message);
@@ -310,4 +314,15 @@ export async function db_query<T = unknown>(
 
 		return false;
 	}
+}
+
+/**
+ * Check wether a path tries to leave it's root directory
+ * @param pth path to check
+ * @returns wether pth tries to escape
+ */
+export function check_path_escape(pth: string): boolean {
+	const resolved_path = path.resolve(pth);
+
+	return resolved_path.startsWith("..") && path.isAbsolute(resolved_path);
 }

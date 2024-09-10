@@ -1,15 +1,32 @@
 import path from "path";
 import fs from "fs";
-import mime from "mime-types";
-import { Body, HTTPStatus, is_object, is_string, Message, Methods } from "./lib";
-import Config from "./config";
+// import mime from "mime-types";
 import { Request, Response } from "express";
 import { Express } from "express";
+import mysql from "promise-mysql";
+
+import { logger } from "./logger";
+import Config from "./config";
+import {
+	Body,
+	check_admin,
+	check_path_escape as check_path_escapes,
+	check_permission,
+	HTTPStatus,
+	iiaf_wrap,
+	is_object,
+	is_string,
+	Message,
+	Methods,
+	send_response
+} from "./lib";
 
 /**
  * Handle the requests of vuefinder
  */
 export default class FileServer {
+	private db: mysql.Connection;
+
 	private endpoint_map: Pick<
 		Record<Methods, Record<string, (req: Request) => Message>>,
 		"GET" | "POST"
@@ -31,73 +48,53 @@ export default class FileServer {
 	};
 
 	/**
-	 *
 	 * @param app express-instance to use
+	 * @param db database
 	 */
-	constructor(app: Express) {
-		app.get("/api/storage/browse", (req: Request, res: Response) => {
-			void this.get(req, res);
+	constructor(app: Express, db: mysql.Connection) {
+		this.db = db;
+
+		// map the individual method-functions into an object
+		const function_map: Pick<
+			{
+				[K in Methods]: (path: string, callback: (req: Request, res: Response) => void) => void;
+			},
+			"GET" | "POST"
+		> = {
+			/* eslint-disable @typescript-eslint/naming-convention */
+			GET: app.get.bind(app),
+			POST: app.post.bind(app)
+			/* eslint-enable @typescript-eslint/naming-convention */
+		};
+
+		// add the listeners
+		Object.entries(this.endpoint_map).forEach(([method, paths]) => {
+			// iterate over the different specified methods
+			Object.entries(paths).forEach(([path, func]) => {
+				// register the individual end-points
+				function_map[method as "GET" | "POST"]("/api/storage/public" + path, (req, res) => {
+					iiaf_wrap(async () => {
+						logger.log(`HTTP ${method} request: ${req.url}`);
+
+						//check wether the session-token is valid and the user is an admin
+						if (check_permission(req) && (await check_admin(db, req))) {
+							if (is_string(req.query.q)) {
+								const message = func(req);
+
+								send_response(res, message);
+							} else {
+								logger.log("query is missing 'q");
+
+								res.status(HTTPStatus.BadRequest).send();
+							}
+						} else {
+							// invalid session-token
+							send_response(res, { status: HTTPStatus.Forbidden });
+						}
+					});
+				});
+			});
 		});
-
-		app.post("/api/storage/browse", (req: Request, res: Response) => {
-			void this.post(req, res);
-		});
-	}
-
-	/**
-	 * handles all GET-requests
-	 * @param req Request
-	 * @param res Response
-	 */
-	get(req: Request, res: Response) {
-		if (typeof req.query.q === "string") {
-			if (this.endpoint_map.GET[req.query.q] !== undefined) {
-				const message = this.endpoint_map.GET[req.query.q]?.(req);
-
-				res.status(message.status);
-
-				if (message.json !== undefined) {
-					res.json(message.json);
-				} else if (message.buffer !== undefined) {
-					res.setHeader("Content-Type", "application/octet-stream");
-					res.send(message.buffer);
-				} else {
-					res.send(message.message);
-				}
-			} else {
-				res.status(HTTPStatus.NotImplemented).send();
-			}
-		} else {
-			res.status(HTTPStatus.BadRequest).send();
-		}
-	}
-
-	/**
-	 * Handle all POST-requests
-	 * @param req Request
-	 * @param res Response
-	 */
-	post(req: Request, res: Response) {
-		if (typeof req.query.q === "string") {
-			if (this.endpoint_map.POST[req.query.q] !== undefined) {
-				const message = this.endpoint_map.POST[req.query.q]?.(req);
-
-				res.status(message.status);
-
-				if (message.json !== undefined) {
-					res.json(message.json);
-				} else if (message.buffer !== undefined) {
-					res.setHeader("Content-Type", "application/octet-stream");
-					res.send(message.buffer);
-				} else {
-					res.send(message.message);
-				}
-			} else {
-				res.status(HTTPStatus.NotImplemented).send();
-			}
-		} else {
-			res.status(HTTPStatus.BadRequest).send();
-		}
 	}
 
 	/**
@@ -106,28 +103,38 @@ export default class FileServer {
 	 * @returns client-response-message
 	 */
 	protected get_files(req: Request): Message {
+		// if there is no adapter specified, use PUBLIC
 		const adapter =
 			is_string(req.query.adapter) && req.query.adapter !== "null" ? req.query.adapter : "PUBLIC";
 
-		const pth = this.extract_path(is_string(req.query.path) ? req.query.path : "/", adapter);
+		// if there is no path specified, use the root "/"
+		const pth = extract_path(is_string(req.query.path) ? req.query.path : "", adapter);
 		const pth_local = Config.get_upload_dir(pth);
 
-		const files = fs.readdirSync(pth_local);
+		if (check_path_escapes(pth)) {
+			const files = fs.readdirSync(pth_local);
 
-		return {
-			status: HTTPStatus.OK,
-			json: {
-				adapter,
-				storages: [adapter],
-				dirname: pth,
-				files: files.map((ff_name) => {
-					const ff = path.join(pth, ff_name);
-					const ff_local = Config.get_upload_dir(ff);
+			return {
+				status: HTTPStatus.OK,
+				json: {
+					adapter,
+					storages: [adapter],
+					dirname: pth,
+					files: files.map((ff_name) => {
+						const ff = path.join(pth, ff_name);
+						const ff_local = Config.get_upload_dir(ff);
 
-					return this.to_vuefinder_resource(adapter, ff, fs.statSync(ff_local));
-				})
-			}
-		};
+						return to_vuefinder_resource(adapter, ff, fs.statSync(ff_local));
+					})
+				}
+			};
+		} else {
+			logger.warn(`request tried to escape it's directory (pth='${pth}'`);
+
+			return {
+				status: HTTPStatus.Forbidden
+			};
+		}
 	}
 
 	/**
@@ -136,14 +143,21 @@ export default class FileServer {
 	 * @returns client-response-message
 	 */
 	protected get_preview(req: Request): Message {
-		if (typeof req.query.path === "string" && typeof req.query.adapter === "string") {
+		if (is_string(req.query.path) && is_string(req.query.adapter)) {
 			return {
 				status: HTTPStatus.OK,
 				buffer: fs.readFileSync(
-					Config.get_upload_dir(this.extract_path(req.query.path, req.query.adapter))
+					Config.get_upload_dir(extract_path(req.query.path, req.query.adapter))
 				)
 			};
 		} else {
+			if (!is_string(req.query.path)) {
+				logger.warn("query is missing 'path");
+			}
+			if (!is_string(req.query.adapter)) {
+				logger.warn("query is missing 'adaptor");
+			}
+
 			return { status: HTTPStatus.BadRequest };
 		}
 	}
@@ -157,7 +171,7 @@ export default class FileServer {
 		const query = req.query;
 		if (is_string(query.adapter) && is_string(query.path)) {
 			const adapter = query.adapter;
-			const pth = this.extract_path(query.path, adapter);
+			const pth = extract_path(query.path, adapter);
 			const pth_local = Config.get_upload_dir(pth);
 
 			return {
@@ -169,7 +183,7 @@ export default class FileServer {
 							const stats = fs.statSync(path.join(pth_local, ff));
 
 							if (stats.isDirectory()) {
-								return this.to_vuefinder_resource(adapter, path.join(pth, ff), stats);
+								return to_vuefinder_resource(adapter, path.join(pth, ff), stats);
 							} else {
 								return null;
 							}
@@ -178,6 +192,13 @@ export default class FileServer {
 				}
 			};
 		} else {
+			if (!is_string(query.adapter)) {
+				logger.log("query is missing 'adapter'");
+			}
+			if (!is_string(query.path)) {
+				logger.log("query is missing 'path'");
+			}
+
 			return { status: HTTPStatus.BadRequest };
 		}
 	}
@@ -200,16 +221,29 @@ export default class FileServer {
 		const body = req.body as Body;
 
 		if (
-			typeof req.query.adapter === "string" &&
-			typeof req.query.path === "string" &&
-			typeof body === "object" &&
-			typeof body.name === "string"
+			is_string(req.query.adapter) &&
+			is_string(req.query.path) &&
+			is_object(body) &&
+			is_string(body.name)
 		) {
 			fs.mkdirSync(path.join(Config.server.upload_dir, req.query.path, body.name));
 
 			return this.get_files(req);
 		} else {
-			return { status: HTTPStatus.NotImplemented };
+			if (!is_string(req.query.adapter)) {
+				logger.log("req is missing 'adapter'");
+			}
+			if (!is_string(req.query.path)) {
+				logger.log("req is missing 'path'");
+			}
+			if (!is_object(body)) {
+				logger.log("body is missing");
+			}
+			if (!is_string(body.name)) {
+				logger.log("body is missing 'name'");
+			}
+
+			return { status: HTTPStatus.BadRequest };
 		}
 	}
 
@@ -223,14 +257,24 @@ export default class FileServer {
 		const body = req.body as Body;
 
 		if (is_string(query.adapter) && is_string(body.item) && is_string(body.name)) {
-			const orig = Config.get_upload_dir(this.extract_path(body.item, query.adapter));
+			const orig = Config.get_upload_dir(extract_path(body.item, query.adapter));
 			const dest = path.join(path.dirname(orig), body.name);
 
 			fs.renameSync(orig, dest);
 
 			return this.get_files(req);
 		} else {
-			return { status: HTTPStatus.NotImplemented };
+			if (!is_string(query.adapter)) {
+				logger.log("query is missing 'adapter'");
+			}
+			if (!is_string(body.item)) {
+				logger.log("body is missing 'item'");
+			}
+			if (!is_string(body.name)) {
+				logger.log("body is missing 'name'");
+			}
+
+			return { status: HTTPStatus.BadRequest };
 		}
 	}
 
@@ -244,16 +288,26 @@ export default class FileServer {
 
 		if (is_string(req.query.adapter) && is_string(body.item) && is_items_array(body.items)) {
 			const adapter = req.query.adapter;
-			const destination = Config.get_upload_dir(this.extract_path(body.item, adapter));
+			const destination = Config.get_upload_dir(extract_path(body.item, adapter));
 
 			body.items.forEach((ff) => {
-				const orig = this.extract_path((ff as { path: string }).path, adapter);
+				const orig = extract_path((ff as { path: string }).path, adapter);
 
 				fs.renameSync(Config.get_upload_dir(orig), path.join(destination, path.basename(orig)));
 			});
 
 			return this.get_files(req);
 		} else {
+			if (!is_string(req.query.adapter)) {
+				logger.log("query is missing 'adapter'");
+			}
+			if (!is_string(body.item)) {
+				logger.log("body is missing 'item'");
+			}
+			if (!is_items_array(body.items)) {
+				logger.log("body is missing 'items'");
+			}
+
 			return { status: HTTPStatus.BadRequest };
 		}
 	}
@@ -271,7 +325,7 @@ export default class FileServer {
 			const adapter = query.adapter;
 
 			body.items.forEach((ff) => {
-				const local_path = Config.get_upload_dir(this.extract_path(ff.path, adapter));
+				const local_path = Config.get_upload_dir(extract_path(ff.path, adapter));
 
 				if (ff.type === "file") {
 					fs.rmSync(local_path);
@@ -282,51 +336,61 @@ export default class FileServer {
 
 			return this.get_files(req);
 		} else {
+			if (is_string(query.adapter)) {
+				logger.log("query is missing 'adapter'");
+			}
+			if (Array.isArray(body.items)) {
+				logger.log("body is missing 'items'");
+			}
+			if (is_items_array(body.items)) {
+				logger.log("body is missing 'items'");
+			}
+
 			return { status: HTTPStatus.BadRequest };
 		}
 	}
+}
 
-	/**
-	 * remove the adapter from the path
-	 * @param pth path with uri
-	 * @param adapter adapter used in the uri
-	 * @returns path without adapter
-	 */
-	private extract_path(pth: string, adapter: string): string {
-		return pth.replace(`${adapter}:/`, "");
+/**
+ * remove the adapter from the path
+ * @param pth path with uri
+ * @param adapter adapter used in the uri
+ * @returns path without adapter
+ */
+function extract_path(pth: string, adapter: string): string {
+	return pth.replace(`${adapter}:/`, "");
+}
+
+/**
+ * craft a vuefinder-resource for a file
+ * @param adapter adapter for the path
+ * @param pth path of the directory
+ * @param info file-info
+ * @returns vuefinder-resource
+ */
+function to_vuefinder_resource(adapter: string, pth: string, info: fs.Stats) {
+	const mime_type = false; //mime.lookup(pth);
+
+	const pth_parse = path.parse(pth);
+
+	if (pth[0] === "/") {
+		pth = pth.slice(1);
 	}
 
-	/**
-	 * craft a vuefinder-resource for a file
-	 * @param adapter adapter for the path
-	 * @param pth path of the directory
-	 * @param info file-info
-	 * @returns vuefinder-resource
-	 */
-	private to_vuefinder_resource(adapter: string, pth: string, info: fs.Stats) {
-		const mime_type = mime.lookup(pth);
+	const data = {
+		type: info.isDirectory() ? "dir" : "file",
+		path: `${adapter}:/${pth}`,
+		visibility: "public",
+		last_modified: info.mtime.getTime() / 1000,
+		mime_type: mime_type !== false ? mime_type : "text/plain",
+		extra_metadata: [],
+		basename: pth_parse.base,
+		extension: pth_parse.ext,
+		storage: adapter,
+		file_size: info.size
+	};
 
-		const pth_parse = path.parse(pth);
-
-		if (pth[0] === "/") {
-			pth = pth.slice(1);
-		}
-
-		const data = {
-			type: info.isDirectory() ? "dir" : "file",
-			path: `${adapter}:/${pth}`,
-			visibility: "public",
-			last_modified: info.mtime.getTime() / 1000,
-			mime_type: mime_type !== false ? mime_type : "text/plain",
-			extra_metadata: [],
-			basename: pth_parse.base,
-			extension: pth_parse.ext,
-			storage: adapter,
-			file_size: info.size
-		};
-
-		return data;
-	}
+	return data;
 }
 
 /**

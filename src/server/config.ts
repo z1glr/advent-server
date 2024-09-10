@@ -3,10 +3,11 @@ import fs from "fs";
 import { Levels } from "log4js";
 import ms from "ms";
 import yaml from "yaml";
+import Ajv from "ajv";
+import formatsPlugin from "ajv-formats";
 
 import config_schema from "../../config.schema.json";
 import { ErrorObject, JSONSchemaType } from "ajv";
-import Ajv from "ajv/dist/core";
 
 export interface DatabaseConnectionSettings {
 	host: string;
@@ -33,6 +34,7 @@ export interface ConfigYAML {
 }
 
 const ajv = new Ajv();
+formatsPlugin(ajv);
 const validate_config_yaml = ajv.compile(config_schema as unknown as JSONSchemaType<ConfigYAML>);
 const config_path = "config.yaml";
 
