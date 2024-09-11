@@ -319,11 +319,7 @@ export default class FileServer {
 			body.items.forEach((ff) => {
 				const local_path = Config.get_upload_dir(extract_path(ff.path, adapter));
 
-				if (ff.type === "file") {
-					fs.rmSync(local_path);
-				} else {
-					fs.rmdirSync(local_path, { recursive: true });
-				}
+				fs.rmSync(local_path, { recursive: true });
 			});
 
 			return this.get_files(req);
