@@ -38,7 +38,6 @@
                 },
 				"connection_limit": {
 					"type": "integer",
-					"default": 10,
 					"minimum": 1
 				}
             },
@@ -46,8 +45,7 @@
                 "host",
                 "user",
                 "password",
-                "database",
-				"connection_limit"
+                "database"
             ],
             "additionalProperties": false
         },

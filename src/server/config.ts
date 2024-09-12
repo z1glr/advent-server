@@ -14,7 +14,8 @@ export interface DatabaseConnectionSettings {
 	user: string;
 	password: string;
 	database: string;
-	connection_limit: number;
+	// eslint-disable-next-line @typescript-eslint/naming-convention
+	connectionLimit: number;
 }
 
 export interface ConfigYAML {
