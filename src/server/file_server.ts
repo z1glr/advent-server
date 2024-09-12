@@ -25,7 +25,7 @@ import {
  * Handle the requests of vuefinder
  */
 export default class FileServer {
-	private db: mysql.Connection;
+	private db_pool: mysql.Pool;
 
 	private endpoint_map: Pick<
 		Record<Methods, Record<string, (req: Request) => Message>>,
@@ -49,10 +49,10 @@ export default class FileServer {
 
 	/**
 	 * @param app express-instance to use
-	 * @param db database
+	 * @param db_pool database
 	 */
-	constructor(app: Express, db: mysql.Connection) {
-		this.db = db;
+	constructor(app: Express, db_pool: mysql.Pool) {
+		this.db_pool = db_pool;
 
 		// map the individual method-functions into an object
 		const function_map: Pick<Record<Methods, IRouterMatcher<IRouter>>, "GET" | "POST"> = {
@@ -69,15 +69,26 @@ export default class FileServer {
 						logger.log(`HTTP ${method} request: ${req.url}`);
 
 						//check wether the session-token is valid and the user is an admin
-						if (check_permission(req) && (await check_admin(db, req))) {
-							if (is_string(req.query.q) && this.endpoint_map[method][req.query.q] !== undefined) {
-								const message = this.endpoint_map[method][req.query.q](req);
+						if (check_permission(req)) {
+							const is_admin = await check_admin(db_pool, req);
 
-								send_response(res, message);
+							if (is_admin) {
+								if (
+									is_string(req.query.q) &&
+									this.endpoint_map[method][req.query.q] !== undefined
+								) {
+									const message = this.endpoint_map[method][req.query.q](req);
+
+									send_response(res, message);
+								} else {
+									logger.log("query is missing 'q");
+
+									res.status(HTTPStatus.BadRequest).send();
+								}
+							} else if (is_admin === null) {
+								send_response(res, { status: HTTPStatus.InternalServerError });
 							} else {
-								logger.log("query is missing 'q");
-
-								res.status(HTTPStatus.BadRequest).send();
+								send_response(res, { status: HTTPStatus.Forbidden });
 							}
 						} else {
 							// invalid session-token

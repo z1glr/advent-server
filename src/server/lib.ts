@@ -262,16 +262,16 @@ export function extract_uid(req: Request): number | null {
 
 /**
  * Check wether the request came from an admin
- * @param db database
+ * @param db_pool database
  * @param req Request with the session-cookie
  * @returns wether the request came from an admin
  */
-export async function check_admin(db: mysql.Connection, req: Request): Promise<boolean> {
+export async function check_admin(db_pool: mysql.Pool, req: Request): Promise<boolean | null> {
 	const uid = extract_uid(req);
 
 	if (typeof uid === "number") {
 		const data = await db_query<Pick<UserEntry, "admin">>(
-			db,
+			db_pool,
 			"SELECT admin FROM users WHERE uid = ?",
 			[uid]
 		);
@@ -279,27 +279,27 @@ export async function check_admin(db: mysql.Connection, req: Request): Promise<b
 		if (data) {
 			return data[0].admin === 1;
 		} else {
-			return false;
+			return null;
 		}
 	} else {
-		return false;
+		return null;
 	}
 }
 
 /**
  * wraps a db.query inside a try-catch and logs errors
- * @param db database
+ * @param db_pool database
  * @param query sql-query
  * @param values values for the query
  * @returns db.query<T>(querry, values)
  */
 export async function db_query<T = unknown>(
-	db: mysql.Connection,
+	db_pool: mysql.Pool,
 	query: string,
 	values?: unknown[]
 ): Promise<T[] | false> {
 	try {
-		return db.query<T[]>(query, values);
+		return await db_pool.query<T[]>(query, values);
 	} catch (error) {
 		let parameter_string: string = `query='${query}'`;
 

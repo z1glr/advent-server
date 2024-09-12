@@ -55,12 +55,23 @@ void (async () => {
 	app.use(cookieParser());
 
 	// connect to the database
-	const db = await mysql.createConnection({
-		...Config.database
+	const recreate_pool = () => mysql.createPool({ ...Config.database });
+	let db_pool: mysql.Pool = await recreate_pool();
+
+	db_pool.on("error", (err) => {
+		if (err.code === "PROTOCOL_CONNECTION_LOST") {
+			iiaf_wrap(async () => {
+				logger.log("attempting database reconnect");
+
+				db_pool = await recreate_pool();
+			});
+		} else {
+			throw err;
+		}
 	});
 
 	// initialize the file-server for vuefinder
-	const _file_server = new FileServer(app, db);
+	new FileServer(app, db_pool);
 
 	// setup multer to store files
 	const storage = multer.diskStorage({
@@ -79,7 +90,7 @@ void (async () => {
 			iiaf_wrap(async () => {
 				callback(
 					null,
-					(await check_admin(db, req)) && check_path_escapes(req.file?.originalname ?? "")
+					!!(await check_admin(db_pool, req)) && check_path_escapes(req.file?.originalname ?? "")
 				);
 			});
 		}
@@ -203,7 +214,7 @@ void (async () => {
 		} else {
 			// if it is the admin user, overwrite 'admin' to true
 			const user = await db_query<Pick<UserEntry, "name">>(
-				db,
+				db_pool,
 				"SELECT name FROM users WHERE uid = ?",
 				[req.query.uid]
 			);
@@ -237,11 +248,11 @@ void (async () => {
 		let result;
 
 		if (is_string(uid_req)) {
-			result = await db_query<1>(db, "SELECT 1 FROM users WHERE uid = ? AND name = admin", [
+			result = await db_query<1>(db_pool, "SELECT 1 FROM users WHERE uid = ? AND name = admin", [
 				uid_req
 			]);
 		} else {
-			result = await db_query<1>(db, "SELECT 1 FROM users WHERE uid = ? AND name = admin", [
+			result = await db_query<1>(db_pool, "SELECT 1 FROM users WHERE uid = ? AND name = admin", [
 				extract_uid(uid_req)
 			]);
 		}
@@ -285,18 +296,20 @@ void (async () => {
 	 * @returns client-response-message
 	 */
 	async function add_user(req: Request): Promise<Message> {
-		if (await check_admin(db, req)) {
+		const is_admin = await check_admin(db_pool, req);
+
+		if (is_admin) {
 			const body = req.body as Body;
 
 			if (is_string(body.user) && is_string(body.password)) {
 				// check, wether the user already exists
-				const data = await db_query<1>(db, "SELECT 1 FROM users WHERE name = ?", [body.user]);
+				const data = await db_query<1>(db_pool, "SELECT 1 FROM users WHERE name = ?", [body.user]);
 
 				if (data && data.length === 0) {
 					const password_hash = await hash_password(body.password);
 
 					if (is_string(password_hash)) {
-						await db_query(db, "INSERT INTO users (name, password) VALUES (?, ?)", [
+						await db_query(db_pool, "INSERT INTO users (name, password) VALUES (?, ?)", [
 							body.user,
 							password_hash
 						]);
@@ -320,6 +333,8 @@ void (async () => {
 
 				return { status: HTTPStatus.BadRequest };
 			}
+		} else if (is_admin === null) {
+			return { status: HTTPStatus.InternalServerError };
 		} else {
 			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
 
@@ -333,7 +348,8 @@ void (async () => {
 	 * @returns client-response-message
 	 */
 	async function modify_user(req: Request): Promise<Message> {
-		if (await check_admin(db, req)) {
+		const is_admin = await check_admin(db_pool, req);
+		if (is_admin) {
 			const body = req.body as Body;
 			if (is_number_string(req.query.uid) && is_boolean(body.admin) && is_string(body.password)) {
 				const uid = req.query.uid;
@@ -351,7 +367,7 @@ void (async () => {
 					const password_hash = await hash_password(body.password);
 
 					if (is_string(password_hash)) {
-						await db_query(db, "UPDATE users SET password = ?, admin = ? WHERE uid = ?", [
+						await db_query(db_pool, "UPDATE users SET password = ?, admin = ? WHERE uid = ?", [
 							password_hash,
 							body.admin,
 							req.query.uid
@@ -360,7 +376,7 @@ void (async () => {
 						return password_hash;
 					}
 				} else {
-					await db_query(db, "UPDATE users SET admin = ? WHERE uid = ?", [
+					await db_query(db_pool, "UPDATE users SET admin = ? WHERE uid = ?", [
 						body.admin,
 						req.query.uid
 					]);
@@ -380,6 +396,8 @@ void (async () => {
 
 				return { status: HTTPStatus.BadRequest };
 			}
+		} else if (is_admin === null) {
+			return { status: HTTPStatus.InternalServerError };
 		} else {
 			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
 
@@ -393,7 +411,9 @@ void (async () => {
 	 * @returns client-response-message
 	 */
 	async function delete_user(req: Request): Promise<Message> {
-		if (await check_admin(db, req)) {
+		const is_admin = await check_admin(db_pool, req);
+
+		if (is_admin) {
 			if (is_number_string(req.query.uid)) {
 				// prevent deleting the admin-account or self
 				if (await is_self_or_admin_user(req.query.uid, req)) {
@@ -402,8 +422,8 @@ void (async () => {
 					return { status: HTTPStatus.Forbidden };
 				} else {
 					if (
-						!(await db_query(db, "DELETE FROM users WHERE uid=?", [req.query.uid])) ||
-						!(await db_query(db, "DELETE FROM comments WHERE uid = ?", [req.query.uid]))
+						!(await db_query(db_pool, "DELETE FROM users WHERE uid=?", [req.query.uid])) ||
+						!(await db_query(db_pool, "DELETE FROM comments WHERE uid = ?", [req.query.uid]))
 					) {
 						return { status: HTTPStatus.InternalServerError };
 					}
@@ -417,6 +437,8 @@ void (async () => {
 
 				return { status: HTTPStatus.BadRequest };
 			}
+		} else if (is_admin === null) {
+			return { status: HTTPStatus.InternalServerError };
 		} else {
 			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
 
@@ -430,12 +452,14 @@ void (async () => {
 	 * @returns client-response-message
 	 */
 	async function save_post(req: Request): Promise<Message> {
-		if (await check_admin(db, req)) {
+		const is_admin = await check_admin(db_pool, req);
+
+		if (is_admin) {
 			const body = req.body as Body;
 
 			if (is_string(body.text) && is_string(req.query.pid)) {
 				if (
-					!(await db_query(db, "UPDATE posts SET content = ? WHERE pid = ?", [
+					!(await db_query(db_pool, "UPDATE posts SET content = ? WHERE pid = ?", [
 						body.text,
 						req.query.pid
 					]))
@@ -454,6 +478,8 @@ void (async () => {
 
 				return { status: HTTPStatus.BadRequest };
 			}
+		} else if (is_admin === null) {
+			return { status: HTTPStatus.InternalServerError };
 		} else {
 			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
 
@@ -474,7 +500,7 @@ void (async () => {
 		if (is_number_string(req.query.pid) && is_number(uid) && is_string(body.text)) {
 			// check wether the post is from today / "accepts" comments
 			const post_date = await db_query<Pick<PostEntry, "date">>(
-				db,
+				db_pool,
 				"SELECT date FROM posts WHERE pid = ?",
 				[req.query.pid]
 			);
@@ -491,7 +517,7 @@ void (async () => {
 
 			// check wether the user already posted
 			const data = await db_query<1>(
-				db,
+				db_pool,
 				"SELECT 1 FROM comments WHERE pid = ? AND uid = ? LIMIT 1",
 				[req.query.pid, uid]
 			);
@@ -501,7 +527,7 @@ void (async () => {
 			}
 
 			if (data.length === 0) {
-				await db_query(db, "INSERT INTO comments (pid, uid, text) VALUES (?, ?, ?)", [
+				await db_query(db_pool, "INSERT INTO comments (pid, uid, text) VALUES (?, ?, ?)", [
 					req.query.pid,
 					uid,
 					body.text
@@ -534,9 +560,11 @@ void (async () => {
 	 * @returns client-response-message
 	 */
 	async function delete_comment(req: Request): Promise<Message> {
-		if (await check_admin(db, req)) {
+		const is_admin = await check_admin(db_pool, req);
+
+		if (is_admin) {
 			if (is_number_string(req.query.cid)) {
-				if (!(await db_query(db, "DELETE FROM comments WHERE cid = ?", [req.query.cid]))) {
+				if (!(await db_query(db_pool, "DELETE FROM comments WHERE cid = ?", [req.query.cid]))) {
 					return { status: HTTPStatus.InternalServerError };
 				} else {
 					return { status: HTTPStatus.OK };
@@ -546,6 +574,8 @@ void (async () => {
 
 				return { status: HTTPStatus.BadRequest };
 			}
+		} else if (is_admin === null) {
+			return { status: HTTPStatus.InternalServerError };
 		} else {
 			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
 
@@ -559,16 +589,18 @@ void (async () => {
 	 * @returns client-response-message
 	 */
 	async function add_answer(req: Request): Promise<Message> {
-		if (await check_admin(db, req)) {
+		const is_admin = await check_admin(db_pool, req);
+
+		if (is_admin) {
 			const body = req.body as Body;
 
 			if (is_number_string(req.query.cid) && is_string(body.answer)) {
-				await db_query(db, "UPDATE comments SET answer = ? WHERE cid = ?", [
+				await db_query(db_pool, "UPDATE comments SET answer = ? WHERE cid = ?", [
 					body.answer,
 					req.query.cid
 				]);
 
-				const data = await db_query<CommentEntry>(db, "SELECT * FROM comments WHERE cid = ?", [
+				const data = await db_query<CommentEntry>(db_pool, "SELECT * FROM comments WHERE cid = ?", [
 					req.query.cid
 				]);
 
@@ -587,6 +619,8 @@ void (async () => {
 
 				return { status: HTTPStatus.BadRequest };
 			}
+		} else if (is_admin === null) {
+			return { status: HTTPStatus.InternalServerError };
 		} else {
 			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
 
@@ -604,7 +638,9 @@ void (async () => {
 			const pid = req.query.pid;
 
 			if (is_string(pid)) {
-				const db_result = await db_query<PostEntry>(db, "SELECT * FROM posts WHERE pid = ?", [pid]);
+				const db_result = await db_query<PostEntry>(db_pool, "SELECT * FROM posts WHERE pid = ?", [
+					pid
+				]);
 
 				if (!db_result) {
 					return { status: HTTPStatus.InternalServerError };
@@ -626,14 +662,18 @@ void (async () => {
 				return { status: HTTPStatus.BadRequest };
 			}
 		} else {
-			if (await check_admin(db, req)) {
-				const data = await db_query<PostEntry>(db, "SELECT * FROM posts");
+			const is_admin = await check_admin(db_pool, req);
+
+			if (is_admin) {
+				const data = await db_query<PostEntry>(db_pool, "SELECT * FROM posts");
 
 				if (!data) {
 					return { status: HTTPStatus.InternalServerError };
 				}
 
 				return { status: HTTPStatus.OK, json: data };
+			} else if (is_admin === null) {
+				return { status: HTTPStatus.InternalServerError };
 			} else {
 				logger.warn(`user with uid=${extract_uid(req)} is no admin`);
 
@@ -663,9 +703,11 @@ void (async () => {
 		const body = req.body as Body;
 
 		if (is_string(body.user) && is_string(body.password)) {
-			const users = await db_query<UserEntry>(db, "SELECT * FROM users WHERE name = ? LIMIT 1", [
-				body.user
-			]);
+			const users = await db_query<UserEntry>(
+				db_pool,
+				"SELECT * FROM users WHERE name = ? LIMIT 1",
+				[body.user]
+			);
 
 			if (!users) {
 				return { status: HTTPStatus.InternalServerError };
@@ -804,7 +846,7 @@ void (async () => {
 	 */
 	async function get_users(): Promise<Message> {
 		const data_raw = await db_query<Omit<UserEntry, "password">>(
-			db,
+			db_pool,
 			"SELECT uid, name, admin FROM users"
 		);
 
@@ -866,7 +908,7 @@ void (async () => {
 
 			// get the date of the post
 			const db_result = await db_query<Pick<PostEntry, "date">>(
-				db,
+				db_pool,
 				"SELECT date FROM posts WHERE pid = ?",
 				[pid]
 			);
@@ -878,7 +920,7 @@ void (async () => {
 			// only send comment, if the date allows it
 			if (new Date() >= new Date(db_result[0].date)) {
 				data = await db_query<CommentEntry>(
-					db,
+					db_pool,
 					"SELECT * FROM comments WHERE pid=? ORDER BY cid DESC",
 					[pid]
 				);
@@ -892,8 +934,12 @@ void (async () => {
 		} else {
 			const req = req_pid;
 
-			if (await check_admin(db, req)) {
-				data = await db_query<CommentEntry>(db, "SELECT * FROM comments ORDER BY cid DESC");
+			const is_admin = await check_admin(db_pool, req);
+
+			if (is_admin) {
+				data = await db_query<CommentEntry>(db_pool, "SELECT * FROM comments ORDER BY cid DESC");
+			} else if (is_admin === null) {
+				return { status: HTTPStatus.InternalServerError };
 			} else {
 				logger.warn(`user with uid=${extract_uid(req)} is no admin`);
 
@@ -914,7 +960,9 @@ void (async () => {
 	 * @returns client-response-message
 	 */
 	async function storage_upload(req: Request): Promise<Message> {
-		if (await check_admin(db, req)) {
+		const is_admin = await check_admin(db_pool, req);
+
+		if (is_admin) {
 			return {
 				status: HTTPStatus.OK,
 				json: {
@@ -926,6 +974,8 @@ void (async () => {
 						.replace(" ", "_")
 				}
 			};
+		} else if (is_admin === null) {
+			return { status: HTTPStatus.InternalServerError };
 		} else {
 			logger.warn(`user with uid=${extract_uid(req)} is no admin`);
 

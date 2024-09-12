@@ -35,13 +35,19 @@
                 "database": {
                     "type": "string",
 					"default": "advent"
-                }
+                },
+				"connection_limit": {
+					"type": "integer",
+					"default": 10,
+					"minimum": 1
+				}
             },
             "required": [
                 "host",
                 "user",
                 "password",
-                "database"
+                "database",
+				"connection_limit"
             ],
             "additionalProperties": false
         },

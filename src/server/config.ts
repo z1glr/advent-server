@@ -14,6 +14,7 @@ export interface DatabaseConnectionSettings {
 	user: string;
 	password: string;
 	database: string;
+	connection_limit: number;
 }
 
 export interface ConfigYAML {
