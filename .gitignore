@@ -1,9 +1,5 @@
-node_modules
-logs
-dist
-out
-config.yaml
+__debug_bin*
 
-build/release.js
-build/3rdpartylicenses.json
-start_mariadb.sh
+backend/logs
+backend/server
+backend/uploads
