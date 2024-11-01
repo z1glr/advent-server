@@ -2,9 +2,8 @@
 - tidy-up dbSelect with mixed fmt.xxx and logger.xxx
 - use .env
 - use fibers `fiber.NewError` for http-error handling
-- checkuser has bug: `if len(response) != 1`: if noone awas found -> nil (get's handled as "pass")
+- checkuser has bug: `if len(response) != 1`: if none awas found -> nil (get's handled as "pass")
 - add backend for file-upload
-- use token-ids
 - add make-file
 
 # dotenv-example-code from chatgpt
