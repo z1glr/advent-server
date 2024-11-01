@@ -1,0 +1,16 @@
+log_level: INFO
+database:
+  host: localhost
+  user: USER
+  password: PASSWORD
+  database: DATABASE
+  connection_limit: 10
+client_session:
+  jwt_signature: JWT_SIGNATURE
+  expire: 168h
+setup:
+  start: 2024-12-01
+  days: 24
+server:
+  port: 61016
+  upload_dir: uploads

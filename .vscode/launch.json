@@ -5,32 +5,18 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
-			"type": "node",
+			"name": "backend",
+			"type": "go",
 			"request": "launch",
-			"name": "server",
-			"skipFiles": [
-				"<node_internals>/**"
-			],
-			"program": "${workspaceFolder}/src/server/server.ts",
-			"preLaunchTask": "server: tsc-type-check and esbuild-sourcemap",
-			"outFiles": [
-				"${workspaceFolder}/out/server/**/*.js"
-			],
-			"internalConsoleOptions": "openOnSessionStart"
+			"mode": "debug",
+			"program": "${workspaceFolder}/backend"
 		},
 		{
-			"type": "node",
-			"request": "launch",
 			"name": "setup",
-			"skipFiles": [
-				"<node_internals>/**"
-			],
-			"program": "${workspaceFolder}/src/setup/setup.ts",
-			"preLaunchTask": "setup: tsc-type-check and esbuild-sourcemap",
-			"outFiles": [
-				"${workspaceFolder}/out/setup/**/*.js"
-			],
-			"internalConsoleOptions": "openOnSessionStart"
+			"type": "go",
+			"request": "launch",
+			"mode": "debug",
+			"program": "${workspaceFolder}/setup"
 		}
-	] 
+	]
 }

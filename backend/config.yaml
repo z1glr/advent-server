@@ -1,0 +1,16 @@
+log_level: DEBUG
+database:
+  host: localhost:3306
+  user: z1glr
+  password: GBp:,7hpl2bij,BcT2A7
+  database: z1glr_advent
+  connection_limit: 10
+client_session:
+  jwt_signature: 0%m391yMXX%tßA0jß7E_TB(%=q2B<ä<I9°äh)KTä?nxKW?HyDo+)JuwöBIC157y+6|!ÜEcßQ,Rr|P0[[r(5wP-E#-YSeXFxdoCdF
+  expire: 168h
+setup:
+  days: 24
+  start: "2024-09-01"
+server:
+  port: 61016
+  upload_dir: uploads
