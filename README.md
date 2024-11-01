@@ -1,7 +1,6 @@
 # todo
 - use .env
 - use fibers `fiber.NewError` for http-error handling
-- create setup in go
 
 # dotenv-example-code from chatgpt
 ```go
