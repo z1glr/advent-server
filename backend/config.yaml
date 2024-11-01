@@ -6,7 +6,7 @@ database:
   database: z1glr_advent
   connection_limit: 10
 client_session:
-  jwt_signature: .s4U6uEWe!8BQr4YUTW@HNJsYA8NCMutbhe!H!mgKZB8fEsdsBqayfYNcTgHiYApGd-6_LgyU!WJjD!6d7dhejxruNew-Woz2R*c
+  jwt_signature: 0%m391yMXX%tßA0jß7E_TB(%=q2B<ä<I9°äh)KTä?nxKW?HyDo+)JuwöBIC157y+6|!ÜEcßQ,Rr|P0[[r(5wP-E#-YSeXFxdoCdF
   expire: 168h
 setup:
   days: 24

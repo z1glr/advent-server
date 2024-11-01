@@ -1,3 +1,5 @@
-logs
-server
 __debug_bin*
+
+backend/logs
+backend/server
+backend/uploads

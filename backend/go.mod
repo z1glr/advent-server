@@ -1,4 +1,4 @@
-module advent/server
+module github.com/johannesbuehl/advent-server/backend
 
 go 1.23.1
 
