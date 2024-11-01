@@ -22,11 +22,16 @@ import (
 
 var logger zap.Logger
 var db *sql.DB
+var app = fiber.New(fiber.Config{
+	AppName:               "advent-server",
+	DisableStartupMessage: true,
+})
 
 type responseMessage struct {
 	Status  int
 	Message *string
 	Data    any
+	Buffer  []byte
 }
 
 func (result responseMessage) send(c *fiber.Ctx) error {
@@ -39,6 +44,8 @@ func (result responseMessage) send(c *fiber.Ctx) error {
 	} else {
 		if result.Data != nil {
 			c.JSON(result.Data)
+		} else if result.Buffer != nil {
+			c.Send(result.Buffer)
 		} else {
 			if result.Message != nil {
 				c.SendString(*result.Message)
@@ -1079,14 +1086,7 @@ func deleteUsers(c *fiber.Ctx) responseMessage {
 	return response
 }
 
-func main() {
-	defer logger.Sync()
-
-	app := fiber.New(fiber.Config{
-		AppName:               "advent-server",
-		DisableStartupMessage: true,
-	})
-
+func init() {
 	// handle specific request special
 	app.Get("/api/welcome", handleWelcome)
 	app.Post("/api/login", handleLogin)
@@ -1140,6 +1140,10 @@ func main() {
 			})
 		}
 	}
+}
+
+func main() {
+	defer logger.Sync()
 
 	app.Listen(fmt.Sprintf(":%d", Config.Server.Port))
 }

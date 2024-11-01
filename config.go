@@ -3,7 +3,11 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
+	"path"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -36,6 +40,7 @@ type ConfigYaml struct {
 type ConfigStruct struct {
 	ConfigYaml
 	SessionExpire time.Duration
+	UploadDirSys  fs.FS
 }
 
 var Config ConfigStruct
@@ -63,6 +68,40 @@ func (config ConfigStruct) signJWT(val any) (string, error) {
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, payload)
 
 	return t.SignedString([]byte(Config.ClientSession.JwtSignature))
+}
+
+func (config ConfigStruct) sanitizeUploadDir(pth string) (string, error) {
+	pth = path.Join(config.Server.UploadDir, pth)
+
+	// replace the home-directorz
+	if strings.HasPrefix(pth, "~") {
+		if home, err := os.UserHomeDir(); err != nil {
+			return "", err
+		} else {
+			pth = path.Join(home, pth[1:])
+		}
+	}
+
+	// expand environment variables
+	pth = os.ExpandEnv(pth)
+	pth = path.Clean(pth)
+
+	// evaluate symlinks
+	if relPath, err := filepath.Rel(config.Server.UploadDir, pth); err != nil {
+		return "", err
+	} else if relPath == "." || !strings.HasPrefix(relPath, "..") {
+		return relPath, nil
+	} else {
+		return "", fmt.Errorf("path %q is not inside of %q", pth, config.Server.UploadDir)
+	}
+}
+
+func (config ConfigStruct) getUploadDir(pth string) (string, error) {
+	if pth, err := config.sanitizeUploadDir(pth); err != nil {
+		return pth, err
+	} else {
+		return path.Join(Config.Server.UploadDir, pth), nil
+	}
 }
 
 func loadConfig() ConfigStruct {
@@ -93,6 +132,7 @@ func loadConfig() ConfigStruct {
 	return ConfigStruct{
 		ConfigYaml:    config,
 		SessionExpire: duration,
+		UploadDirSys:  os.DirFS(config.Server.UploadDir),
 	}
 }
 

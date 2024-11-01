@@ -3,7 +3,7 @@
 - use .env
 - use fibers `fiber.NewError` for http-error handling
 - checkuser has bug: `if len(response) != 1`: if none awas found -> nil (get's handled as "pass")
-- add backend for file-upload
+- create setup in go
 
 # dotenv-example-code from chatgpt
 ```go
