@@ -1,3 +1,38 @@
 # todo
 - tidy-up dbSelect with mixed fmt.xxx and logger.xxx
 - use .env
+- use fibers `fiber.NewError` for http-error handling
+- checkuser has bug: `if len(response) != 1`: if noone awas found -> nil (get's handled as "pass")
+- add backend for file-upload
+- use token-ids
+- add make-file
+
+# dotenv-example-code from chatgpt
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "os"
+
+    "github.com/joho/godotenv"
+)
+
+func main() {
+    // Load the .env file
+    err := godotenv.Load()
+    if err != nil {
+        log.Fatal("Error loading .env file")
+    }
+
+    // Now you can access the variables
+    dbHost := os.Getenv("DB_HOST")
+    dbUser := os.Getenv("DB_USER")
+    dbPassword := os.Getenv("DB_PASSWORD")
+
+    fmt.Println("DB_HOST:", dbHost)
+    fmt.Println("DB_USER:", dbUser)
+    fmt.Println("DB_PASSWORD:", dbPassword)
+}
+```

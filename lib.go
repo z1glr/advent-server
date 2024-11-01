@@ -1,11 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"reflect"
-	"strconv"
 )
 
 func ptr[T any](v T) *T {
@@ -34,22 +31,4 @@ func strucToMap(data any) (map[string]any, error) {
 	}
 
 	return result, nil
-}
-
-func queryInt(v *http.Request, key string) (int, error) {
-	if val := v.URL.Query().Get(key); val == "" {
-		return 0, fmt.Errorf("query doesn't %q", key)
-	} else if iVal, err := strconv.Atoi(val); err != nil {
-		return 0, err
-	} else {
-		return iVal, nil
-	}
-}
-
-func bodyDecode(r *http.Request, v any) error {
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	err := decoder.Decode(&v)
-
-	return err
 }
