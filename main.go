@@ -152,7 +152,7 @@ func dbSelect[T any](table string, where string, args ...any) ([]T, error) {
 	}
 
 	if err != nil {
-		logger.Sugar().Errorf("database access failed with error %q", err.Error())
+		logger.Sugar().Errorf("database access failed with error %v", err.Error())
 
 		return nil, err
 	}
@@ -183,7 +183,7 @@ func dbSelect[T any](table string, where string, args ...any) ([]T, error) {
 
 		// scan the row into the struct
 		if err := rows.Scan(scanArgs...); err != nil {
-			logger.Sugar().Warnf("Scan-error: %q", err.Error())
+			logger.Sugar().Warnf("Scan-error: %v", err.Error())
 
 			return nil, err
 		}
@@ -192,7 +192,7 @@ func dbSelect[T any](table string, where string, args ...any) ([]T, error) {
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.Sugar().Errorf("rows-error: %q", err.Error())
+		logger.Sugar().Errorf("rows-error: %v", err.Error())
 		return nil, err
 	} else {
 		return results, nil
@@ -238,7 +238,7 @@ func dbCount(table string, where any) (int, error) {
 	}
 
 	if err != nil {
-		logger.Sugar().Errorf("database access failed with error %q", err.Error())
+		logger.Sugar().Errorf("database access failed with error %v", err.Error())
 
 		return 0, err
 	}
@@ -254,7 +254,7 @@ func dbCount(table string, where any) (int, error) {
 
 		// Scan the row (even though we don't actually need the content)
 		if err := rows.Scan(&lineResult); err != nil {
-			logger.Sugar().Warnf("Scan-error: %q", err.Error())
+			logger.Sugar().Warnf("Scan-error: %v", err.Error())
 			return 0, err
 		}
 
@@ -263,7 +263,7 @@ func dbCount(table string, where any) (int, error) {
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.Sugar().Errorf("rows-error: %q", err.Error())
+		logger.Sugar().Errorf("rows-error: %v", err.Error())
 		return 0, err
 	} else {
 		return count, nil
@@ -529,7 +529,7 @@ func handleLogin(c *fiber.Ctx) error {
 	body := new(LoginBody)
 
 	if err := c.BodyParser(body); err != nil {
-		logger.Warn("error while parsing login-body")
+		logger.Sugar().Warn("error while parsing login-body")
 
 		response.Status = fiber.StatusBadRequest
 	} else {
@@ -561,7 +561,7 @@ func handleLogin(c *fiber.Ctx) error {
 				})
 
 				if err != nil {
-					logger.Sugar().Errorf("failed creating json-webtoken: %q", err.Error())
+					logger.Sugar().Errorf("failed creating json-webtoken: %v", err.Error())
 					response.Status = fiber.StatusInternalServerError
 				} else {
 
@@ -664,7 +664,7 @@ func patchPosts(c *fiber.Ctx) responseMessage {
 		logger.Error(err.Error())
 		response.Status = fiber.StatusInternalServerError
 	} else if !admin {
-		logger.Warn("user is no admin")
+		logger.Sugar().Warn("user is no admin")
 		response.Status = fiber.StatusForbidden
 	} else {
 		body := new(struct{ Content string })
@@ -767,7 +767,7 @@ func postComments(c *fiber.Ctx) responseMessage {
 					})
 
 					if err := c.BodyParser(&body); err != nil {
-						logger.Warn(`"body" can't be parsed as "{ text string }"`)
+						logger.Sugar().Warn(`"body" can't be parsed as "{ text string }"`)
 						response.Status = fiber.StatusBadRequest
 					} else {
 						if err := dbInsert("comments", CommentInsert{
@@ -775,7 +775,7 @@ func postComments(c *fiber.Ctx) responseMessage {
 							Uid:  uid,
 							Text: body.Text,
 						}); err != nil {
-							logger.Sugar().Warnf("Writing comment to database failed with error: %q", err.Error())
+							logger.Sugar().Warnf("Writing comment to database failed with error: %v", err.Error())
 							response.Status = fiber.StatusInternalServerError
 						} else {
 							response = getComments(c)
@@ -794,7 +794,7 @@ func deleteComments(c *fiber.Ctx) responseMessage {
 
 	// check wether the query is valid
 	if cid := c.QueryInt("cid", -1); cid < 0 {
-		logger.Warn(`request doesn't include valid "cid"`)
+		logger.Sugar().Warn(`request doesn't include valid "cid"`)
 		response.Status = fiber.StatusBadRequest
 	} else {
 		// check wether the user has the permissions
@@ -806,7 +806,7 @@ func deleteComments(c *fiber.Ctx) responseMessage {
 			// everything is good
 
 			if err := dbDelete("comments", struct{ Cid int }{cid}); err != nil {
-				logger.Sugar().Warnf("Deleting comment from database failed with error: %q", err.Error())
+				logger.Sugar().Warnf("Deleting comment from database failed with error: %v", err.Error())
 				response.Status = fiber.StatusInternalServerError
 			}
 
@@ -887,7 +887,7 @@ func postUsers(c *fiber.Ctx) responseMessage {
 		logger.Error(err.Error())
 		response.Status = fiber.StatusInternalServerError
 	} else if !admin {
-		logger.Warn("user is no admin")
+		logger.Sugar().Warn("user is no admin")
 		response.Status = fiber.StatusForbidden
 	} else {
 		body := new(struct {
@@ -937,7 +937,7 @@ func patchUsers(c *fiber.Ctx) responseMessage {
 		logger.Error(err.Error())
 		response.Status = fiber.StatusInternalServerError
 	} else if !admin {
-		logger.Warn("user is no admin")
+		logger.Sugar().Warn("user is no admin")
 		response.Status = fiber.StatusForbidden
 	} else {
 		body := new(struct {
@@ -955,7 +955,7 @@ func patchUsers(c *fiber.Ctx) responseMessage {
 			logger.Error(err.Error())
 			response.Status = fiber.StatusInternalServerError
 		} else if len(modifyUsers) != 1 {
-			logger.Warn("User doesn't exist")
+			logger.Sugar().Warn("User doesn't exist")
 			response.Status = fiber.StatusBadRequest
 		} else {
 			if requestUid, _, err := extractJWT(c); err != nil {
@@ -1036,7 +1036,7 @@ func deleteUsers(c *fiber.Ctx) responseMessage {
 		logger.Error(err.Error())
 		response.Status = fiber.StatusInternalServerError
 	} else if !admin {
-		logger.Warn("user is no admin")
+		logger.Sugar().Warn("user is no admin")
 		response.Status = fiber.StatusForbidden
 	} else {
 		if uid := c.QueryInt("uid", -1); uid < 0 {
@@ -1046,7 +1046,7 @@ func deleteUsers(c *fiber.Ctx) responseMessage {
 			logger.Error(err.Error())
 			response.Status = fiber.StatusInternalServerError
 		} else if len(modifyUsers) != 1 {
-			logger.Warn("User doesn't exist")
+			logger.Sugar().Warn("User doesn't exist")
 			response.Status = fiber.StatusBadRequest
 		} else {
 			if requestUid, _, err := extractJWT(c); err != nil {

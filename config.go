@@ -109,7 +109,7 @@ func loadConfig() ConfigStruct {
 
 	yamlFile, err := os.ReadFile("config.yaml")
 	if err != nil {
-		logger.Sugar().Errorf("Error opening config-file: %q", err)
+		logger.Sugar().Errorf("Error opening config-file: %v", err)
 	}
 
 	reader := bytes.NewReader(yamlFile)
@@ -118,14 +118,14 @@ func loadConfig() ConfigStruct {
 	dec.KnownFields(true)
 	err = dec.Decode(&config)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing config-file: %q", err.Error())
+		fmt.Fprintf(os.Stderr, "Error parsing config-file: %v", err.Error())
 		os.Exit(1)
 	}
 
 	duration, err := time.ParseDuration(config.ClientSession.Expire)
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, `Error Parsing "client_session.expire": %q`, err.Error())
+		fmt.Fprintf(os.Stderr, `Error Parsing "client_session.expire": %v`, err.Error())
 		os.Exit(1)
 	}
 

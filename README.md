@@ -1,8 +1,6 @@
 # todo
-- tidy-up dbSelect with mixed fmt.xxx and logger.xxx
 - use .env
 - use fibers `fiber.NewError` for http-error handling
-- checkuser has bug: `if len(response) != 1`: if none awas found -> nil (get's handled as "pass")
 - create setup in go
 
 # dotenv-example-code from chatgpt
