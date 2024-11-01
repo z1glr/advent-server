@@ -357,7 +357,7 @@ export default class FileServer {
  * @returns path without adapter
  */
 function extract_path(pth: string, adapter: string): string {
-	return `${pth.replace(`${adapter}://`, "")}`;
+	return pth.replace(`${adapter}://`, "");
 }
 
 /**
