@@ -633,7 +633,7 @@ func getPosts(c *fiber.Ctx) responseMessage {
 		posts, err := dbSelect[Post]("posts", "pid = ?", pid)
 
 		if err != nil {
-			logger.Error(err.Error())
+			logger.Sugar().Error(err.Error())
 			response.Status = fiber.StatusInternalServerError
 		} else {
 			response.Data = posts[0]
@@ -661,7 +661,7 @@ func patchPosts(c *fiber.Ctx) responseMessage {
 	var response responseMessage
 
 	if admin, err := checkAdmin(c); err != nil {
-		logger.Error(err.Error())
+		logger.Sugar().Error(err.Error())
 		response.Status = fiber.StatusInternalServerError
 	} else if !admin {
 		logger.Sugar().Warn("user is no admin")
@@ -677,7 +677,7 @@ func patchPosts(c *fiber.Ctx) responseMessage {
 			response.Status = fiber.StatusBadRequest
 		} else {
 			if err := dbUpdate("posts", body, struct{ Pid int }{Pid: pid}); err != nil {
-				logger.Error(err.Error())
+				logger.Sugar().Error(err.Error())
 				response.Status = fiber.StatusInternalServerError
 			} else {
 			}
@@ -709,7 +709,7 @@ func getComments(c *fiber.Ctx) responseMessage {
 		comments, err := dbSelect[Comment]("comments", "pid = ?", pid)
 
 		if err != nil {
-			logger.Error(err.Error())
+			logger.Sugar().Error(err.Error())
 			response.Status = fiber.StatusInternalServerError
 		} else {
 			response.Data = comments
@@ -739,7 +739,7 @@ func postComments(c *fiber.Ctx) responseMessage {
 	if pid := c.QueryInt("pid", -1); pid < 0 {
 		logger.Info(`query doesn't include valid "pid"`)
 	} else if uid, _, err := extractJWT(c); err != nil {
-		logger.Error(err.Error())
+		logger.Sugar().Error(err.Error())
 	} else {
 		// check wether the post-date is today
 		if dbResponse, err := dbSelect[struct{ Date string }]("posts", "pid = ? LIMIT 1", pid); err != nil {
@@ -838,7 +838,7 @@ func postCommentsAnswer(c *fiber.Ctx) responseMessage {
 				response.Status = fiber.StatusBadRequest
 			} else {
 				if err := dbUpdate("comments", struct{ Answer string }{Answer: body.Answer}, struct{ Cid int }{Cid: cid}); err != nil {
-					logger.Error(err.Error())
+					logger.Sugar().Error(err.Error())
 					response.Status = fiber.StatusInternalServerError
 				} else {
 					if comments, err := dbSelect[Comment]("comments", "cid = ?", cid); err != nil || len(comments) != 1 {
@@ -884,7 +884,7 @@ func postUsers(c *fiber.Ctx) responseMessage {
 	var response responseMessage
 
 	if admin, err := checkAdmin(c); err != nil {
-		logger.Error(err.Error())
+		logger.Sugar().Error(err.Error())
 		response.Status = fiber.StatusInternalServerError
 	} else if !admin {
 		logger.Sugar().Warn("user is no admin")
@@ -902,7 +902,7 @@ func postUsers(c *fiber.Ctx) responseMessage {
 		} else {
 			// check wether a user with the same name already exists
 			if userCount, err := dbCount("users", struct{ Name string }{Name: body.Name}); err != nil {
-				logger.Error(err.Error())
+				logger.Sugar().Error(err.Error())
 				response.Status = fiber.StatusInternalServerError
 			} else if userCount != 0 {
 				logger.Sugar().Debugf("user with name %q already exists", body.Name)
@@ -910,14 +910,14 @@ func postUsers(c *fiber.Ctx) responseMessage {
 			} else {
 				// everything is valid
 				if hashedPassword, err := hashPassword(body.Password); err != nil {
-					logger.Error(err.Error())
+					logger.Sugar().Error(err.Error())
 					response.Status = fiber.StatusInternalServerError
 				} else {
 					if err := dbInsert("users", struct {
 						Name     string
 						Password []byte
 					}{Name: body.Name, Password: hashedPassword}); err != nil {
-						logger.Error(err.Error())
+						logger.Sugar().Error(err.Error())
 						response.Status = fiber.StatusInternalServerError
 					} else {
 						response = getUsers(c)
@@ -934,7 +934,7 @@ func patchUsers(c *fiber.Ctx) responseMessage {
 	var response responseMessage
 
 	if admin, err := checkAdmin(c); err != nil {
-		logger.Error(err.Error())
+		logger.Sugar().Error(err.Error())
 		response.Status = fiber.StatusInternalServerError
 	} else if !admin {
 		logger.Sugar().Warn("user is no admin")
@@ -952,7 +952,7 @@ func patchUsers(c *fiber.Ctx) responseMessage {
 			logger.Info(err.Error())
 			response.Status = fiber.StatusBadRequest
 		} else if modifyUsers, err := dbSelect[User]("users", "uid = ?", uid); err != nil {
-			logger.Error(err.Error())
+			logger.Sugar().Error(err.Error())
 			response.Status = fiber.StatusInternalServerError
 		} else if len(modifyUsers) != 1 {
 			logger.Sugar().Warn("User doesn't exist")
@@ -962,7 +962,7 @@ func patchUsers(c *fiber.Ctx) responseMessage {
 				logger.Info(err.Error())
 				response.Status = fiber.StatusBadRequest
 			} else if requestUsers, err := dbSelect[User]("users", "uid = ?", requestUid); err != nil {
-				logger.Error(err.Error())
+				logger.Sugar().Error(err.Error())
 				response.Status = fiber.StatusInternalServerError
 			} else if len(requestUsers) != 1 {
 				logger.Sugar().Errorf("User doesn't exist %q", requestUid)
@@ -975,23 +975,23 @@ func patchUsers(c *fiber.Ctx) responseMessage {
 				if len(body.Password) > 0 {
 					// only allow admin to change himself
 					if modifyUser.Name == "admin" && requestUser.Name != "admin" {
-						logger.Error(`password of user "admin" can only be changed by himself`)
+						logger.Sugar().Error(`password of user "admin" can only be changed by himself`)
 						response.Status = fiber.StatusForbidden
 
 						// check wether the current-user tries to modify himself
 					} else if requestUser.Name == modifyUser.Name && requestUser.Name != "admin" {
-						logger.Error(`can't change own password`)
+						logger.Sugar().Error(`can't change own password`)
 						response.Status = fiber.StatusForbidden
 					} else {
 						if hashedPassword, err := hashPassword(body.Password); err != nil {
-							logger.Error(err.Error())
+							logger.Sugar().Error(err.Error())
 							response.Status = fiber.StatusInternalServerError
 						} else {
 							// increase the token-id
 							if err := incTokenId(modifyUser.Uid); err != nil {
 								response.Status = fiber.StatusInternalServerError
 							} else if err := dbUpdate("users", struct{ Password []byte }{Password: hashedPassword}, struct{ Uid int }{Uid: modifyUser.Uid}); err != nil {
-								logger.Error(err.Error())
+								logger.Sugar().Error(err.Error())
 								response.Status = fiber.StatusInternalServerError
 							}
 						}
@@ -1003,17 +1003,17 @@ func patchUsers(c *fiber.Ctx) responseMessage {
 					// disallow demoting of the "admin"-user
 					if modifyUser.Name == "admin" {
 						if !modifyUser.Admin {
-							logger.Error(`"admin"-user can't be demoted"`)
+							logger.Sugar().Error(`"admin"-user can't be demoted"`)
 							response.Status = fiber.StatusForbidden
 						}
 
 						// check wether the current-user tries to modify himself
 					} else if requestUser.Name == modifyUser.Name {
-						logger.Error(`can't demote self`)
+						logger.Sugar().Error(`can't demote self`)
 						response.Status = fiber.StatusForbidden
 					} else {
 						if err := dbUpdate("users", struct{ Admin bool }{Admin: body.Admin}, struct{ Uid int }{Uid: modifyUser.Uid}); err != nil {
-							logger.Error(err.Error())
+							logger.Sugar().Error(err.Error())
 							response.Status = fiber.StatusInternalServerError
 						}
 					}
@@ -1033,7 +1033,7 @@ func deleteUsers(c *fiber.Ctx) responseMessage {
 
 	// check wether the user is an admin
 	if admin, err := checkAdmin(c); err != nil {
-		logger.Error(err.Error())
+		logger.Sugar().Error(err.Error())
 		response.Status = fiber.StatusInternalServerError
 	} else if !admin {
 		logger.Sugar().Warn("user is no admin")
@@ -1043,7 +1043,7 @@ func deleteUsers(c *fiber.Ctx) responseMessage {
 			logger.Info(`query doesn't include valid "uid"`)
 			response.Status = fiber.StatusBadRequest
 		} else if modifyUsers, err := dbSelect[User]("users", "uid = ?", uid); err != nil {
-			logger.Error(err.Error())
+			logger.Sugar().Error(err.Error())
 			response.Status = fiber.StatusInternalServerError
 		} else if len(modifyUsers) != 1 {
 			logger.Sugar().Warn("User doesn't exist")
@@ -1053,7 +1053,7 @@ func deleteUsers(c *fiber.Ctx) responseMessage {
 				logger.Info(err.Error())
 				response.Status = fiber.StatusBadRequest
 			} else if requestUsers, err := dbSelect[User]("users", "uid = ?", requestUid); err != nil {
-				logger.Error(err.Error())
+				logger.Sugar().Error(err.Error())
 				response.Status = fiber.StatusInternalServerError
 			} else if len(requestUsers) != 1 {
 				logger.Sugar().Errorf("User doesn't exist %q", requestUid)
@@ -1064,16 +1064,16 @@ func deleteUsers(c *fiber.Ctx) responseMessage {
 
 				// disallow deleting of the "admin"-user
 				if deleteUser.Name == "admin" {
-					logger.Error(`"admin"-user can't be deleted"`)
+					logger.Sugar().Error(`"admin"-user can't be deleted"`)
 					response.Status = fiber.StatusForbidden
 
 					// check wether the current-user tries to modify himself
 				} else if requestUser.Name == deleteUser.Name {
-					logger.Error(`can't delete self`)
+					logger.Sugar().Error(`can't delete self`)
 					response.Status = fiber.StatusForbidden
 				} else {
 					if err := dbDelete("users", struct{ Uid int }{Uid: deleteUser.Uid}); err != nil {
-						logger.Error(err.Error())
+						logger.Sugar().Error(err.Error())
 						response.Status = fiber.StatusInternalServerError
 					} else {
 						response = getUsers(c)
