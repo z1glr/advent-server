@@ -1,10 +1,14 @@
-.PHONY: all backend setup init
+.PHONY: all backend setup init client
 
-all: backend
+all: backend client
 
 backend:
 	@echo "building server"
 	cd backend; go build -ldflags "-s -w"
+
+client:
+	@echo "building client"
+	cd client; npm run release
 
 init:
 	@echo "creating \"backend/config.yaml\""
