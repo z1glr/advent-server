@@ -366,7 +366,7 @@ func dbDelete(table string, vals any) error {
 	return err
 }
 
-func extractUid(c *fiber.Ctx) (int, error) {
+func extractJWT(c *fiber.Ctx) (int, int, error) {
 	cookie := c.Cookies("session")
 
 	token, err := jwt.ParseWithClaims(cookie, &JWT{}, func(token *jwt.Token) (any, error) {
@@ -378,33 +378,57 @@ func extractUid(c *fiber.Ctx) (int, error) {
 	})
 
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	if claims, ok := token.Claims.(*JWT); ok && token.Valid {
-		return claims.CustomClaims.Uid, nil
+		return claims.CustomClaims.Uid, claims.CustomClaims.Tid, nil
 	} else {
-		return 0, fmt.Errorf("invalid JWT")
+		return 0, 0, fmt.Errorf("invalid JWT")
 	}
 }
 
 func checkUser(c *fiber.Ctx) (bool, error) {
-	uid, err := extractUid(c)
+	uid, tid, err := extractJWT(c)
 
 	if err != nil {
 		return false, err
 	}
 
-	response, err := dbSelect[struct{ Admin bool }]("users", "uid = ? LIMIT 1", uid)
+	response, err := dbSelect[struct {
+		Tid int
+	}]("users", "uid = ? LIMIT 1", uid)
 
 	if err != nil {
 		return false, err
 	}
 
+	// if exactly one user came back and the tID is valid, the user is authorized
+	return len(response) == 1 && response[0].Tid == tid, err
+}
+
+func checkAdmin(c *fiber.Ctx) (bool, error) {
+	uid, tid, err := extractJWT(c)
+
+	if err != nil {
+		return false, err
+	}
+
+	// retrieve the user from the database
+	response, err := dbSelect[struct {
+		Admin bool
+		Tid   int
+	}]("users", "uid = ? LIMIT 1", uid)
+
+	if err != nil {
+		return false, err
+	}
+
+	// if exactly one user came back and its name is "admin", the user is the admin
 	if len(response) != 1 {
-		return false, nil
+		return false, fmt.Errorf("user doesn't exist")
 	} else {
-		return response[0].Admin, err
+		return response[0].Admin && response[0].Tid == tid, err
 	}
 }
 
@@ -414,7 +438,7 @@ func handleWelcome(c *fiber.Ctx) error {
 		LoggedIn: false,
 	}
 
-	if uid, err := extractUid(c); err == nil {
+	if uid, tid, err := extractJWT(c); err == nil {
 		if users, err := dbSelect[User]("users", "uid = ? LIMIT 1", strconv.Itoa(uid)); err != nil {
 			response.Status = fiber.StatusInternalServerError
 		} else {
@@ -422,6 +446,12 @@ func handleWelcome(c *fiber.Ctx) error {
 				response.Status = fiber.StatusForbidden
 				response.Message = ptr("unknown user")
 
+				removeSessionCookie(c)
+			} else if tid != users[0].Tid {
+				// the token-id is expired
+				response.Status = fiber.StatusUnauthorized
+
+				// remove the cookie
 				removeSessionCookie(c)
 			} else {
 				user := users[0]
@@ -448,6 +478,7 @@ type User struct {
 	Name     string `json:"name"`
 	Admin    bool   `json:"admin"`
 	Password []byte `json:"password"`
+	Tid      int    `json:"tid"`
 }
 
 type LoginInfo struct {
@@ -459,11 +490,30 @@ type LoginInfo struct {
 
 type JWTPayload struct {
 	Uid int `json:"uid"`
+	Tid int `json:"tid"`
 }
 
 type JWT struct {
 	Payload
 	CustomClaims JWTPayload
+}
+
+// retrieves the current tid for a specific user from the database
+func getTokenId(uid int) (int, error) {
+	if response, err := dbSelect[User]("users", "uid = ? LIMIT 1", uid); err != nil {
+		return -1, err
+	} else if len(response) != 1 {
+		return -1, fmt.Errorf("can't get user with uid = %q from database", uid)
+	} else {
+		return response[0].Tid, nil
+	}
+}
+
+// increases the tid of a user
+func incTokenId(uid int) error {
+	_, err := db.Exec("UPDATE users SET tid = tid + 1 WHERE uid = ?", uid)
+
+	return err
 }
 
 func handleLogin(c *fiber.Ctx) error {
@@ -488,14 +538,19 @@ func handleLogin(c *fiber.Ctx) error {
 
 			user := dbResult[0]
 
-			if len(dbResult) != 1 || bcrypt.CompareHashAndPassword(user.Password, []byte(body.Password)) != nil {
+			if tid, err := getTokenId(user.Uid); err != nil {
+				response.Status = fiber.StatusInternalServerError
+			} else if len(dbResult) != 1 || tid != user.Tid || bcrypt.CompareHashAndPassword(user.Password, []byte(body.Password)) != nil {
 				response.Status = fiber.StatusUnauthorized
 				message := "Unkown user or wrong password"
 				response.Message = &message
+
+				removeSessionCookie(c)
 			} else {
 				// create the jwt
 				jwt, err := Config.signJWT(JWTPayload{
 					Uid: user.Uid,
+					Tid: user.Tid,
 				})
 
 				if err != nil {
@@ -578,9 +633,9 @@ func getPosts(c *fiber.Ctx) responseMessage {
 		}
 	} else {
 		// if there is no pid given and the user is an admin, send all posts
-		if ok, err := checkUser(c); err != nil {
+		if admin, err := checkAdmin(c); err != nil {
 			response.Status = fiber.StatusInternalServerError
-		} else if ok {
+		} else if admin {
 			if posts, err := dbSelect[Post]("posts", ""); err != nil {
 				response.Status = fiber.StatusInternalServerError
 			} else {
@@ -598,7 +653,7 @@ func getPosts(c *fiber.Ctx) responseMessage {
 func patchPosts(c *fiber.Ctx) responseMessage {
 	var response responseMessage
 
-	if admin, err := checkUser(c); err != nil {
+	if admin, err := checkAdmin(c); err != nil {
 		logger.Error(err.Error())
 		response.Status = fiber.StatusInternalServerError
 	} else if !admin {
@@ -653,10 +708,10 @@ func getComments(c *fiber.Ctx) responseMessage {
 			response.Data = comments
 		}
 	} else {
-		// if there is no pid given and the user is an admin, send all posts
-		if ok, err := checkUser(c); err != nil {
+		// if there is no pid given and the user is an admin, send all comments
+		if admin, err := checkAdmin(c); err != nil {
 			response.Status = fiber.StatusInternalServerError
-		} else if ok {
+		} else if admin {
 			if posts, err := dbSelect[Comment]("comments", ""); err != nil {
 				response.Status = fiber.StatusInternalServerError
 			} else {
@@ -676,7 +731,7 @@ func postComments(c *fiber.Ctx) responseMessage {
 
 	if pid := c.QueryInt("pid", -1); pid < 0 {
 		logger.Info(`query doesn't include valid "pid"`)
-	} else if uid, err := extractUid(c); err != nil {
+	} else if uid, _, err := extractJWT(c); err != nil {
 		logger.Error(err.Error())
 	} else {
 		// check wether the post-date is today
@@ -736,7 +791,7 @@ func deleteComments(c *fiber.Ctx) responseMessage {
 		response.Status = fiber.StatusBadRequest
 	} else {
 		// check wether the user has the permissions
-		if admin, err := checkUser(c); err != nil {
+		if admin, err := checkAdmin(c); err != nil {
 			response.Status = fiber.StatusInternalServerError
 		} else if !admin {
 			response.Status = fiber.StatusForbidden
@@ -759,7 +814,7 @@ func postCommentsAnswer(c *fiber.Ctx) responseMessage {
 	var response responseMessage
 
 	// check wether the user is an admin = allowed to post an answer
-	if admin, err := checkUser(c); err != nil {
+	if admin, err := checkAdmin(c); err != nil {
 		response.Status = fiber.StatusInternalServerError
 	} else if !admin {
 		response.Status = fiber.StatusForbidden
@@ -796,7 +851,7 @@ func getUsers(c *fiber.Ctx) responseMessage {
 	var response responseMessage
 
 	// check wether the user is an admin
-	isAdmin, err := checkUser(c)
+	isAdmin, err := checkAdmin(c)
 
 	if err != nil {
 		response.Status = fiber.StatusInternalServerError
@@ -821,7 +876,7 @@ func hashPassword(password string) ([]byte, error) {
 func postUsers(c *fiber.Ctx) responseMessage {
 	var response responseMessage
 
-	if admin, err := checkUser(c); err != nil {
+	if admin, err := checkAdmin(c); err != nil {
 		logger.Error(err.Error())
 		response.Status = fiber.StatusInternalServerError
 	} else if !admin {
@@ -871,7 +926,7 @@ func postUsers(c *fiber.Ctx) responseMessage {
 func patchUsers(c *fiber.Ctx) responseMessage {
 	var response responseMessage
 
-	if admin, err := checkUser(c); err != nil {
+	if admin, err := checkAdmin(c); err != nil {
 		logger.Error(err.Error())
 		response.Status = fiber.StatusInternalServerError
 	} else if !admin {
@@ -896,7 +951,7 @@ func patchUsers(c *fiber.Ctx) responseMessage {
 			logger.Warn("User doesn't exist")
 			response.Status = fiber.StatusBadRequest
 		} else {
-			if requestUid, err := extractUid(c); err != nil {
+			if requestUid, _, err := extractJWT(c); err != nil {
 				logger.Info(err.Error())
 				response.Status = fiber.StatusBadRequest
 			} else if requestUsers, err := dbSelect[User]("users", "uid = ?", requestUid); err != nil {
@@ -925,7 +980,10 @@ func patchUsers(c *fiber.Ctx) responseMessage {
 							logger.Error(err.Error())
 							response.Status = fiber.StatusInternalServerError
 						} else {
-							if err := dbUpdate("users", struct{ Password []byte }{Password: hashedPassword}, struct{ Uid int }{Uid: modifyUser.Uid}); err != nil {
+							// increase the token-id
+							if err := incTokenId(modifyUser.Uid); err != nil {
+								response.Status = fiber.StatusInternalServerError
+							} else if err := dbUpdate("users", struct{ Password []byte }{Password: hashedPassword}, struct{ Uid int }{Uid: modifyUser.Uid}); err != nil {
 								logger.Error(err.Error())
 								response.Status = fiber.StatusInternalServerError
 							}
@@ -937,8 +995,10 @@ func patchUsers(c *fiber.Ctx) responseMessage {
 				if response.Status == 0 {
 					// disallow demoting of the "admin"-user
 					if modifyUser.Name == "admin" {
-						logger.Error(`"admin"-user can't be demoted"`)
-						response.Status = fiber.StatusForbidden
+						if !modifyUser.Admin {
+							logger.Error(`"admin"-user can't be demoted"`)
+							response.Status = fiber.StatusForbidden
+						}
 
 						// check wether the current-user tries to modify himself
 					} else if requestUser.Name == modifyUser.Name {
@@ -948,10 +1008,11 @@ func patchUsers(c *fiber.Ctx) responseMessage {
 						if err := dbUpdate("users", struct{ Admin bool }{Admin: body.Admin}, struct{ Uid int }{Uid: modifyUser.Uid}); err != nil {
 							logger.Error(err.Error())
 							response.Status = fiber.StatusInternalServerError
-						} else {
-							response = getUsers(c)
 						}
 					}
+
+					// send the users
+					response = getUsers(c)
 				}
 			}
 		}
@@ -964,7 +1025,7 @@ func deleteUsers(c *fiber.Ctx) responseMessage {
 	var response responseMessage
 
 	// check wether the user is an admin
-	if admin, err := checkUser(c); err != nil {
+	if admin, err := checkAdmin(c); err != nil {
 		logger.Error(err.Error())
 		response.Status = fiber.StatusInternalServerError
 	} else if !admin {
@@ -981,7 +1042,7 @@ func deleteUsers(c *fiber.Ctx) responseMessage {
 			logger.Warn("User doesn't exist")
 			response.Status = fiber.StatusBadRequest
 		} else {
-			if requestUid, err := extractUid(c); err != nil {
+			if requestUid, _, err := extractJWT(c); err != nil {
 				logger.Info(err.Error())
 				response.Status = fiber.StatusBadRequest
 			} else if requestUsers, err := dbSelect[User]("users", "uid = ?", requestUid); err != nil {
@@ -1067,7 +1128,9 @@ func main() {
 
 				var response responseMessage
 
-				if _, err := checkUser(c); err == nil {
+				if ok, err := checkUser(c); err != nil {
+					response.Status = fiber.StatusInternalServerError
+				} else if ok {
 					response = handler(c)
 				} else {
 					response.Status = fiber.StatusForbidden
