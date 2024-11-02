@@ -6,7 +6,11 @@ backend:
 	@echo "building server"
 	cd backend; go build -ldflags "-s -w"
 
-client:
+client/node_modules:
+	@echo "installing client-packages"
+	cd client; npm install
+
+client: client/node_modules
 	@echo "building client"
 	cd client; npm run release
 

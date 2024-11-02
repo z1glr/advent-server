@@ -1,7 +1,8 @@
 __debug_bin*
 
 backend/logs
-backend/server
+backend/backend
 backend/uploads
+backend/config.yaml
 
 client
