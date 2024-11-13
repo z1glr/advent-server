@@ -1,0 +1,112 @@
+@import "./base.css";
+
+/* signika-300 - latin_latin-ext */
+@font-face {
+	font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+	font-family: "Signika";
+	font-style: normal;
+	font-weight: 300;
+	src: url("/signika-v25-latin_latin-ext-300.woff2") format("woff2"); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+/* signika-regular - latin_latin-ext */
+@font-face {
+	font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+	font-family: "Signika";
+	font-style: normal;
+	font-weight: 400;
+	src: url("/signika-v25-latin_latin-ext-regular.woff2") format("woff2"); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+/* signika-500 - latin_latin-ext */
+@font-face {
+	font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+	font-family: "Signika";
+	font-style: normal;
+	font-weight: 500;
+	src: url("/signika-v25-latin_latin-ext-500.woff2") format("woff2"); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+/* signika-600 - latin_latin-ext */
+@font-face {
+	font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+	font-family: "Signika";
+	font-style: normal;
+	font-weight: 600;
+	src: url("/signika-v25-latin_latin-ext-600.woff2") format("woff2"); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+/* signika-700 - latin_latin-ext */
+@font-face {
+	font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+	font-family: "Signika";
+	font-style: normal;
+	font-weight: 700;
+	src: url("/signika-v25-latin_latin-ext-700.woff2") format("woff2"); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+
+/*
+@media (hover: hover) {
+  a:hover {
+    background-color: hsla(160, 100%, 37%, 0.2);
+  }
+}
+
+@media (min-width: 1024px) {
+  body {
+    display: flex;
+    place-items: center;
+  }
+} */
+
+input[type="text"],
+input[type="password"] {
+	font-size: inherit;
+
+	color: var(--color-background);
+
+	font-size: 0.85em;
+	padding-inline: 0.5em;
+	padding-block: 0.25em;
+
+	border-radius: 50cqh;
+
+	border: unset;
+
+	background-color: var(--color-contrast);
+
+	transition: background-color 0.1s ease;
+}
+
+input[type="text"]:hover,
+input[type="password"]:hover {
+	background-color: var(--color-contrast-hover);
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus {
+	background: var(--color-accent);
+
+	outline: unset;
+}
+
+input[type="text"]:focus:hover,
+input[type="password"]:focus:hover {
+	background-color: var(--color-accent-hover);
+}
+
+input[type="text"]::placeholder,
+input[type="password"]::placeholder {
+	color: var(--color-background);
+}
+
+::-webkit-scrollbar {
+	background: unset;
+
+	width: 0.5rem;
+}
+
+::-webkit-scrollbar-button {
+	display: none;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--color-text);
+	border-radius: 50cqw;
+}

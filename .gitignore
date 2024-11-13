@@ -5,6 +5,4 @@ backend/backend
 backend/uploads
 backend/config.yaml
 
-client
-
 dist

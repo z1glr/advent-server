@@ -1,6 +1,7 @@
 # todo
 - use .env
 - use fibers `fiber.NewError` for http-error handling
+- update datenschutz
 
 # dotenv-example-code from chatgpt
 ```go
