@@ -9,6 +9,8 @@ backend:
 	cd backend; go build -ldflags "-s -w" -o ../$(out_dir)/backend/
 	@echo "copying config.yaml"
 	cp backend/config.yaml dist/backend
+	@echo "creating upload-directory for file-upload"
+	mkdir dist/backend/uploads -p
 
 client/node_modules:
 	@echo "installing client-packages"
