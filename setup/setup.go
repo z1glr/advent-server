@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"golang.org/x/crypto/bcrypt"
@@ -86,6 +87,21 @@ func main() {
 	fmt.Println("Creating the individual tables:")
 	for _, cmd := range strings.Split(string(sqlScriptCommands), "\n") {
 		db.Exec(cmd)
+	}
+
+	// creating the individual posts
+	fmt.Println("Cerating posts in database")
+
+	if currentDate, err := time.Parse(time.DateOnly, Config.Setup.Start); err != nil {
+		panic(fmt.Errorf("can't parse start-date in config: %v", err))
+	} else {
+		for ii := 0; ii < int(Config.Setup.Days); ii++ {
+			if _, err := db.Exec("INSERT INTO posts (date) VALUES (?)", currentDate); err != nil {
+				panic(fmt.Errorf("can't create post for day %q: %v", currentDate, err))
+			} else {
+				currentDate = currentDate.AddDate(0, 0, 1)
+			}
+		}
 	}
 
 	fmt.Println("Creating admin-password:")
