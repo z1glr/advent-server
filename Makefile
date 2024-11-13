@@ -2,9 +2,13 @@
 
 all: backend client
 
+out_dir = dist
+
 backend:
 	@echo "building server"
-	cd backend; go build -ldflags "-s -w"
+	cd backend; go build -ldflags "-s -w" -o ../$(out_dir)/backend/
+	@echo "copying config.yaml"
+	cp backend/config.yaml dist/backend
 
 client/node_modules:
 	@echo "installing client-packages"
@@ -12,7 +16,7 @@ client/node_modules:
 
 client: client/node_modules
 	@echo "building client"
-	cd client; npm run release
+	cd client; npm run build
 
 init:
 	@echo "creating \"backend/config.yaml\""
