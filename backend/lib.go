@@ -5,10 +5,6 @@ import (
 	"reflect"
 )
 
-func ptr[T any](v T) *T {
-	return &v
-}
-
 func strucToMap(data any) (map[string]any, error) {
 	result := make(map[string]any)
 

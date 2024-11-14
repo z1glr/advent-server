@@ -29,15 +29,15 @@ var app = fiber.New(fiber.Config{
 
 type responseMessage struct {
 	Status  int
-	Message *string
+	Message string
 	Data    any
 	Buffer  []byte
 }
 
 func (result responseMessage) send(c *fiber.Ctx) error {
 	if result.Status >= 400 {
-		if result.Message != nil {
-			return fiber.NewError(result.Status, *result.Message)
+		if result.Message != "" {
+			return fiber.NewError(result.Status, result.Message)
 		} else {
 			return fiber.NewError(result.Status)
 		}
@@ -47,8 +47,8 @@ func (result responseMessage) send(c *fiber.Ctx) error {
 		} else if result.Buffer != nil {
 			c.Send(result.Buffer)
 		} else {
-			if result.Message != nil {
-				c.SendString(*result.Message)
+			if result.Message != "" {
+				c.SendString(result.Message)
 			}
 		}
 
@@ -452,7 +452,7 @@ func handleWelcome(c *fiber.Ctx) error {
 		} else {
 			if len(users) != 1 {
 				response.Status = fiber.StatusForbidden
-				response.Message = ptr("unknown user")
+				response.Message = "unknown user"
 
 				removeSessionCookie(c)
 			} else if tid != users[0].Tid {
@@ -540,45 +540,51 @@ func handleLogin(c *fiber.Ctx) error {
 		if err != nil {
 			response.Status = fiber.StatusInternalServerError
 		} else {
-			response.Data = LoginInfo{
-				LoggedIn: false,
-			}
-
-			user := dbResult[0]
-
-			if tid, err := getTokenId(user.Uid); err != nil {
-				response.Status = fiber.StatusInternalServerError
-			} else if len(dbResult) != 1 || tid != user.Tid || bcrypt.CompareHashAndPassword(user.Password, []byte(body.Password)) != nil {
+			if len(dbResult) != 1 {
 				response.Status = fiber.StatusUnauthorized
-				message := "Unkown user or wrong password"
-				response.Message = &message
+				response.Message = "Unknown user or wrong password"
 
-				removeSessionCookie(c)
+				logger.Sugar().Info("login failed: user not found")
 			} else {
-				// create the jwt
-				jwt, err := Config.signJWT(JWTPayload{
-					Uid: user.Uid,
-					Tid: user.Tid,
-				})
+				response.Data = LoginInfo{
+					LoggedIn: false,
+				}
 
-				if err != nil {
-					logger.Sugar().Errorf("failed creating json-webtoken: %v", err.Error())
+				user := dbResult[0]
+
+				if tid, err := getTokenId(user.Uid); err != nil {
 					response.Status = fiber.StatusInternalServerError
-				} else {
+				} else if len(dbResult) != 1 || tid != user.Tid || bcrypt.CompareHashAndPassword(user.Password, []byte(body.Password)) != nil {
+					response.Status = fiber.StatusUnauthorized
+					response.Message = "Unkown user or wrong password"
 
-					c.Cookie(&fiber.Cookie{
-						Name:     "session",
-						Value:    jwt,
-						HTTPOnly: true,
-						SameSite: "strict",
-						MaxAge:   int(Config.SessionExpire.Seconds()),
+					removeSessionCookie(c)
+				} else {
+					// create the jwt
+					jwt, err := Config.signJWT(JWTPayload{
+						Uid: user.Uid,
+						Tid: user.Tid,
 					})
 
-					response.Data = LoginInfo{
-						Uid:      user.Uid,
-						Name:     user.Name,
-						Admin:    user.Admin,
-						LoggedIn: true,
+					if err != nil {
+						logger.Sugar().Errorf("failed creating json-webtoken: %v", err.Error())
+						response.Status = fiber.StatusInternalServerError
+					} else {
+
+						c.Cookie(&fiber.Cookie{
+							Name:     "session",
+							Value:    jwt,
+							HTTPOnly: true,
+							SameSite: "strict",
+							MaxAge:   int(Config.SessionExpire.Seconds()),
+						})
+
+						response.Data = LoginInfo{
+							Uid:      user.Uid,
+							Name:     user.Name,
+							Admin:    user.Admin,
+							LoggedIn: true,
+						}
 					}
 				}
 			}
