@@ -12,8 +12,7 @@
 		"type-check": "vue-tsc --build --force",
 		"lint": "eslint .",
 		"format-check": "prettier --check src/",
-		"format-write": "prettier --write src/",
-		"prepare": "husky"
+		"format-write": "prettier --write src/"
 	},
 	"dependencies": {
 		"@fortawesome/fontawesome-svg-core": "^6.6.0",
@@ -47,7 +46,6 @@
 		"eslint-config-prettier": "^9.1.0",
 		"eslint-plugin-vue": "^9.28.0",
 		"globals": "^15.9.0",
-		"husky": "^9.1.5",
 		"npm-run-all2": "^6.2.0",
 		"prettier": "^3.3.3",
 		"tmp": "^0.2.3",
