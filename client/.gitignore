@@ -1,6 +1,5 @@
 node_modules
 src/public/signika*
-src/public/legal/*
 
 build/release.cjs
 build/3rdpartylicenses.json

@@ -45,6 +45,13 @@
 	</head>
 	<body>
 		<div id="app_mount"></div>
-		<script type="module" src="../Markdown.ts"></script>
+		<script type="module">
+			import '@/assets/main.css'
+
+			import { createApp } from 'vue'
+			import App from './BaseImpressum.vue'
+
+			createApp(App).mount('#app_mount')
+		</script>
 	</body>
 </html>

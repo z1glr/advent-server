@@ -165,3 +165,35 @@ a:active {
 	text-decoration: none;
 	color: unset;
 }
+
+.bold {
+	font-weight: bold;
+}
+
+.upper {
+	text-transform: uppercase;
+}
+
+.bg-orange {
+	background-color: var(--v-color-orange);
+}
+
+.left {
+	text-align: left;
+}
+
+.right {
+	text-align: right;
+}
+
+.center {
+	text-align: center;
+}
+
+.nowrap {
+	text-wrap: nowrap;
+}
+
+.small {
+	font-size: 0.67em;
+}
