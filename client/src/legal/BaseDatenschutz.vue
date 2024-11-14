@@ -37,6 +37,14 @@
 			<li>Aufgetretene Fehler</li>
 		</ul>
 		<p>
+			Beim Verfassen von Kommentaren beziehungsweise Fragen über die entsprechende Funktion werden folgende Daten gespeichert:
+		</p>
+		<ul>
+			<li>Kommenatar-, Post-, User-ID</li>
+			<li>Inhalt</li>
+			<li>Antwort</li>
+		</ul>
+		<p>
 			Die vorübergehende Speicherung der Daten ist für den Ablauf eines Websitebesuchs erforderlich, um eine Auslieferung der Website zu ermöglichen.
 			Eine weitere Speicherung in Protokolldateien erfolgt, um die Funktionsfähigkeit der Website und die Sicherheit der informationstechnischen Systeme sicherzustellen.
 			In diesen Zwecken liegt auch unser berechtigtes Interesse an der Datenverarbeitung.
