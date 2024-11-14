@@ -63,6 +63,7 @@ func init() {
 	file := zapcore.AddSync(&lumberjack.Logger{
 		Filename: "logs/server.log",
 		MaxSize:  10,
+		MaxAge:   7,
 	})
 
 	level, err := zapcore.ParseLevel(Config.LogLevel)
