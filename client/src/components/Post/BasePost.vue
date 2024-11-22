@@ -66,9 +66,9 @@
 			:source="content.content"
 		/>
 		<template v-if="comments.length > 0 || content.date === format_date(today)">
-			<h2>Fragen</h2>
+			<h2 class="text-3xl">Fragen</h2>
 			<div
-				class="flex w-full items-center"
+				class="flex w-full max-w-[30rem] items-center gap-1"
 				v-show="
 					!comments.some((comment) => comment.uid === Global.user.value?.uid) &&
 					content.date === format_date(today)
@@ -83,7 +83,7 @@
 					><FontAwesomeIcon :icon="faPaperPlane"
 				/></BaseButton>
 			</div>
-			<div class="grid gap-1">
+			<div class="grid w-full max-w-[30rem] gap-1">
 				<BaseComment
 					v-for="(comment, i_comment) of comments"
 					:key="comment.cid"
@@ -101,5 +101,29 @@
 	#content:deep(code) {
 		text-wrap: wrap;
 		overflow-wrap: anywhere;
+	}
+
+	#content:deep(h1) {
+		@apply text-4xl font-bold;
+	}
+
+	#content:deep(h2) {
+		@apply text-3xl font-bold;
+	}
+
+	#content:deep(h3) {
+		@apply text-2xl font-bold;
+	}
+
+	#content:deep(h4) {
+		@apply text-xl font-bold;
+	}
+
+	#content:deep(h5) {
+		@apply text-lg font-bold;
+	}
+
+	#content:deep(h6) {
+		@apply font-bold;
 	}
 </style>
