@@ -97,33 +97,4 @@
 	</template>
 </template>
 
-<style scoped>
-	#content:deep(code) {
-		text-wrap: wrap;
-		overflow-wrap: anywhere;
-	}
-
-	#content:deep(h1) {
-		@apply text-4xl font-bold;
-	}
-
-	#content:deep(h2) {
-		@apply text-3xl font-bold;
-	}
-
-	#content:deep(h3) {
-		@apply text-2xl font-bold;
-	}
-
-	#content:deep(h4) {
-		@apply text-xl font-bold;
-	}
-
-	#content:deep(h5) {
-		@apply text-lg font-bold;
-	}
-
-	#content:deep(h6) {
-		@apply font-bold;
-	}
-</style>
+<style scoped></style>

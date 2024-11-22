@@ -110,83 +110,61 @@
 <template>
 	<h1>Posts</h1>
 	<span
-		id="post-selector"
+		class="inline-flex gap-1"
 		:data-tooltip="unsaved_changes ? 'There are unsaved changes' : undefined"
 	>
 		Select Post:
-		<select id="post-select" v-model="selected_post" :class="{ disabled: unsaved_changes }">
-			<option v-for="post in posts" :key="post.pid" :value="post">
+		<select
+			class="rounded bg-teal-600 text-white"
+			v-model="selected_post"
+			:class="{ 'cursor-help text-neutral-500': unsaved_changes }"
+		>
+			<option v-for="post in posts" class="bg-white text-black" :key="post.pid" :value="post">
 				{{ post.date }}
 			</option>
 		</select>
 	</span>
-	<div id="content_wrapper">
-		<div id="content" v-if="!!selected_post">
-			<MdEditor
-				id="editor"
-				v-model="selected_post.content"
-				language="en-US"
-				:toolbars="[
-					'revoke',
-					'next',
-					'save',
-					'-',
-					'title',
-					'bold',
-					'italic',
-					'underline',
-					'strikeThrough',
-					'orderedList',
-					'unorderedList',
-					'link',
-					'table',
-					'quote',
-					'image'
-				]"
-				:theme="dark_mode ? 'dark' : 'light'"
-				:tab-width="4"
-				:preview="false"
-				@on-save="save_post"
-				@on-upload-img="upload_image"
-			/>
-			<VueMarkdown id="preview" :source="selected_post.content" />
-		</div>
+	<div
+		v-if="selected_post !== undefined"
+		class="flex w-full flex-1 flex-col gap-1 overflow-clip sm:flex-row"
+	>
+		<MdEditor
+			class="h-full"
+			id="editor"
+			v-model="selected_post.content"
+			language="en-US"
+			:toolbars="[
+				'revoke',
+				'next',
+				'save',
+				'-',
+				'title',
+				'bold',
+				'italic',
+				'underline',
+				'strikeThrough',
+				'orderedList',
+				'unorderedList',
+				'link',
+				'table',
+				'quote',
+				'image'
+			]"
+			:theme="dark_mode ? 'dark' : 'light'"
+			:tab-width="4"
+			:preview="false"
+			@on-save="save_post"
+			@on-upload-img="upload_image"
+		/>
+		<VueMarkdown
+			class="block w-full overflow-x-hidden overflow-y-scroll p-4 text-xs"
+			id="preview"
+			:source="selected_post.content"
+		/>
 	</div>
 </template>
 
 <style scoped>
-	#post-selector {
-		display: inline-flex;
-		gap: 0.25em;
-	}
-
-	#post-select {
-		font-size: 1em;
-
-		border-radius: 0.125em;
-
-		background-color: var(--color-contrast);
-
-		border: unset;
-
-		color: var(--color-background);
-	}
-
-	#post-select:focus {
-		outline: unset;
-	}
-
-	#post-select > option {
-		color: var(--color-text);
-		background-color: var(--color-background);
-	}
-
-	#post-select.disabled {
-		color: var(--color-text-disabled);
-
-		cursor: help;
-	}
-
 	[data-tooltip] {
 		position: relative;
 		cursor: help;
@@ -222,57 +200,9 @@
 		transition-duration: 300ms;
 	}
 
-	#content_wrapper {
-		width: 100%;
-
-		display: flex;
-		flex-direction: column;
-		gap: 0.25em;
-
-		flex: 1;
-
-		overflow: clip;
-	}
-
-	#content {
-		display: flex;
-		flex: 1;
-
-		position: relative;
-	}
-
-	#content > * {
-		position: absolute;
-
-		top: 0;
-		bottom: 0;
-
-		height: unset;
-		width: unset;
-	}
-
-	#editor {
-		left: 0;
-		right: 50%;
-	}
-
+	#editor,
 	#preview {
-		left: 50%;
-		right: 0;
-
-		display: block;
-
-		padding: 1em;
-
-		overflow-y: scroll;
-		overflow-x: hidden;
-
-		font-size: 0.75em;
-	}
-
-	#preview:deep(code) {
-		text-wrap: wrap;
-		overflow-wrap: anywhere;
+		height: unset;
 	}
 </style>
 
