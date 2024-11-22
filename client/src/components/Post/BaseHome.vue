@@ -56,7 +56,7 @@
 			class="door flex aspect-square cursor-not-allowed items-center justify-center rounded-sm bg-red-600 text-xl text-white transition-colors"
 			:class="{
 				'bg-teal-600 hover:bg-teal-700': door.value === active_day?.value,
-				'hover:bg-red-700': door.enabled
+				'cursor-pointer hover:bg-red-700': door.enabled
 			}"
 			@click="select_door(door)"
 		>
