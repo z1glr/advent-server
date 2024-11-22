@@ -49,12 +49,15 @@
 </script>
 
 <template>
-	<div id="day_selection">
+	<div class="mx-auto grid w-full max-w-80 grid-cols-6 gap-1">
 		<div
 			v-for="door of doors"
 			:key="door.value"
-			class="door"
-			:class="{ selected: door.value === active_day?.value, enabled: door.enabled }"
+			class="door flex aspect-square cursor-not-allowed items-center justify-center rounded-sm bg-red-600 text-xl text-white transition-colors"
+			:class="{
+				'bg-teal-600 hover:bg-teal-700': door.value === active_day?.value,
+				'hover:bg-red-700': door.enabled
+			}"
 			@click="select_door(door)"
 		>
 			{{ door.value }}
@@ -63,51 +66,4 @@
 	<BasePost v-if="active_day !== undefined" :pid="active_day.value" :key="active_day.value" />
 </template>
 
-<style scoped>
-	#day_selection {
-		display: grid;
-		grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
-
-		gap: 0.25em;
-
-		max-width: 20em;
-		width: 100%;
-
-		margin-inline: auto;
-	}
-
-	.door {
-		display: flex;
-		justify-content: center;
-		align-items: center;
-
-		aspect-ratio: 1;
-
-		font-size: 1.333em;
-
-		background-color: var(--color-accent);
-		color: white;
-
-		border-radius: 0.125em;
-
-		cursor: not-allowed;
-
-		transition: background-color 0.2s ease;
-	}
-
-	.door.enabled:hover {
-		background-color: var(--color-accent-hover);
-	}
-
-	.door.selected {
-		background-color: var(--color-contrast);
-	}
-
-	.door.selected:hover {
-		background-color: var(--color-contrast-hover);
-	}
-
-	.door.enabled {
-		cursor: pointer;
-	}
-</style>
+<style scoped></style>
