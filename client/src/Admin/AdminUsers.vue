@@ -107,17 +107,13 @@
 				<div class="flex gap-4">
 					<span class="inline-flex items-baseline gap-2"
 						><span>username:</span
-						><input
-							type="text"
-							class="w-30 bg-teal-600 text-white"
-							v-model="add_user_name"
-							@keydown.enter="add_user()"
+						><input type="text" class="w-30" v-model="add_user_name" @keydown.enter="add_user()"
 					/></span>
 					<span class="inline-flex items-baseline gap-2"
 						><span>password:</span
 						><input
 							type="text"
-							class="w-30 bg-teal-600 text-white"
+							class="w-30"
 							v-model="add_user_password"
 							@keydown.enter="add_user()"
 					/></span>
@@ -143,7 +139,7 @@
 					<th>
 						<input
 							v-model="user.password"
-							class="w-full bg-teal-600 text-white"
+							class="w-full"
 							:disabled="user.name === 'admin' && Global.user.value?.uid !== user.uid"
 							type="text"
 							placeholder="new password"

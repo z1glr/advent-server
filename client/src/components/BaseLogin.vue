@@ -41,8 +41,8 @@
 </script>
 
 <template>
-	<div class="flex h-full max-w-60 flex-col justify-center gap-1">
-		<h1 class="pl-2 text-4xl">Login</h1>
+	<div class="gap-1xl flex h-full max-w-60 flex-col justify-center text-xl">
+		<h1 class="mb-2 pl-2 text-4xl">Login</h1>
 		<div v-if="wrong_password" class="text-red-500">
 			<h2>Login fehlgeschlagen</h2>
 			unbekannter Benutzer oder fasches Passwort
@@ -51,7 +51,7 @@
 			<div class="flex flex-col gap-1">
 				<input
 					id="username"
-					class="w-full bg-teal-600 text-white hover:bg-teal-700 focus:bg-red-600 focus:hover:bg-red-500"
+					class="w-full"
 					type="text"
 					name="name"
 					autocomplete="username"
@@ -62,7 +62,7 @@
 				/>
 				<input
 					id="password"
-					class="w-full bg-teal-600 text-white hover:bg-teal-700 focus:bg-red-600 focus:hover:bg-red-500"
+					class="w-full"
 					type="password"
 					name="password"
 					autocomplete="current-password"
