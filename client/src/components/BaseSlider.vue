@@ -13,56 +13,38 @@
 </script>
 
 <template>
-	<div id="wrapper" :class="{ active: state, disabled }" @click="toggle">
-		<div id="slider"></div>
+	<div
+		id="wrapper"
+		class="relative aspect-[2] h-5 select-none rounded-full bg-neutral-300 shadow-inner transition-colors"
+		:class="{ active: state, disabled }"
+		@click="toggle"
+	>
+		<div id="slider" class="absolute inset-0 m-[0.1875rem]"></div>
 	</div>
 </template>
 
 <style scoped>
-	#wrapper {
-		aspect-ratio: 2;
-
-		height: 1.125em;
-		user-select: none;
-
-		position: relative;
-
-		background-color: var(--color-off);
-
-		transition: background-color 0.2s ease;
-
-		border-radius: 50cqh;
-
-		box-shadow: 0 0 0.5em -0.25em inset var(--vt-c-black-dark-dark);
-	}
-
 	#wrapper.disabled {
-		background-color: var(--color-off-disabled);
+		@apply bg-neutral-400;
 	}
+
 	#wrapper.active.disabled {
-		background-color: var(--color-on-disabled);
+		@apply bg-blue-300;
 	}
 
 	#wrapper:not(.disabled) {
-		cursor: pointer;
+		@apply cursor-pointer;
 	}
 
 	#wrapper.active {
-		background-color: var(--color-on);
+		@apply bg-blue-700;
 	}
 
 	#wrapper:not(.disabled):hover {
-		background-color: var(--color-off-hover);
+		@apply bg-neutral-400;
 	}
 	#wrapper.active:not(.disabled):hover {
-		background-color: var(--color-on-hover);
-	}
-
-	#slider {
-		position: absolute;
-		inset: 0;
-
-		margin: 0.1875em;
+		@apply bg-blue-800;
 	}
 
 	#slider::before {
