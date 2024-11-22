@@ -1,5 +1,9 @@
 @import "./base.css";
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* signika-300 - latin_latin-ext */
 @font-face {
 	font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
@@ -59,8 +63,6 @@ input[type="text"],
 input[type="password"] {
 	font-size: inherit;
 
-	color: var(--color-background);
-
 	font-size: 0.85em;
 	padding-inline: 0.5em;
 	padding-block: 0.25em;
@@ -69,26 +71,20 @@ input[type="password"] {
 
 	border: unset;
 
-	background-color: var(--color-contrast);
-
 	transition: background-color 0.1s ease;
 }
 
 input[type="text"]:hover,
 input[type="password"]:hover {
-	background-color: var(--color-contrast-hover);
 }
 
 input[type="text"]:focus,
 input[type="password"]:focus {
-	background: var(--color-accent);
-
 	outline: unset;
 }
 
 input[type="text"]:focus:hover,
 input[type="password"]:focus:hover {
-	background-color: var(--color-accent-hover);
 }
 
 input[type="text"]::placeholder,
@@ -109,4 +105,8 @@ input[type="password"]::placeholder {
 ::-webkit-scrollbar-thumb {
 	background: var(--color-text);
 	border-radius: 50cqw;
+}
+
+html {
+	font-size: 2.25em;
 }

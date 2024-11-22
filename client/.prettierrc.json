@@ -8,5 +8,6 @@
 	"bracketSpacing": true,
 	"quoteProps": "as-needed",
 	"endOfLine": "auto",
-	"vueIndentScriptAndStyle": true
+	"vueIndentScriptAndStyle": true,
+	"plugins": ["prettier-plugin-tailwindcss"]
   }
