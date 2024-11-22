@@ -39,12 +39,12 @@
 
 		<a v-if="Global.user.value?.logged_in" @click="logout">Logout</a>
 	</LayoutHeaderFooter>
-	<div id="scroll">
-		<div id="app_content">
+	<div class="flex h-full w-full justify-center overflow-auto">
+		<div class="flex h-full w-full max-w-[200em] flex-col items-center gap-1">
 			<slot></slot>
 		</div>
 	</div>
-	<LayoutHeaderFooter id="footer">
+	<LayoutHeaderFooter class="mt-auto text-xs">
 		<a
 			v-for="[name, url] in Object.entries(footer_sites)"
 			:key="name"
@@ -57,35 +57,6 @@
 </template>
 
 <style scoped>
-	#scroll {
-		width: 100%;
-		height: 100%;
-
-		overflow: auto;
-
-		display: flex;
-		justify-content: center;
-	}
-
-	#app_content {
-		width: 100%;
-		height: 100%;
-		max-width: 50em;
-
-		padding-inline: 1em;
-
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.25em;
-	}
-
-	#footer {
-		margin-top: auto;
-
-		font-size: 0.75em;
-	}
-
 	a:hover {
 		color: var(--color-text-hover);
 	}
@@ -102,8 +73,6 @@
 <style>
 	#app_mount {
 		font-family: "Signika";
-		font-size: 1.5em;
-
 		margin: 0 auto;
 		padding-block: 0.25em;
 		height: 100vh;
