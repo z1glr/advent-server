@@ -60,22 +60,30 @@
 
 <template>
 	<template v-if="content !== undefined">
-		<VueMarkdown id="content" :source="content.content" />
+		<VueMarkdown
+			id="content"
+			class="w-full max-w-[30rem] overflow-x-clip"
+			:source="content.content"
+		/>
 		<template v-if="comments.length > 0 || content.date === format_date(today)">
 			<h2>Fragen</h2>
 			<div
-				id="comment-input"
+				class="flex w-full items-center"
 				v-show="
 					!comments.some((comment) => comment.uid === Global.user.value?.uid) &&
 					content.date === format_date(today)
 				"
 			>
-				<textarea v-model="comment_input_text" placeholder="Frage einsenden" />
+				<textarea
+					class="min-h-16 w-full resize-y"
+					v-model="comment_input_text"
+					placeholder="Frage einsenden"
+				/>
 				<BaseButton id="send-button" @click="send_comment"
 					><FontAwesomeIcon :icon="faPaperPlane"
 				/></BaseButton>
 			</div>
-			<div id="comments">
+			<div class="grid gap-1">
 				<BaseComment
 					v-for="(comment, i_comment) of comments"
 					:key="comment.cid"
@@ -90,37 +98,8 @@
 </template>
 
 <style scoped>
-	#content {
-		overflow-x: clip;
-	}
-
 	#content:deep(code) {
 		text-wrap: wrap;
 		overflow-wrap: anywhere;
-	}
-
-	#comment-input {
-		width: 100%;
-
-		display: flex;
-
-		align-items: center;
-	}
-
-	#comment-input > textarea {
-		width: 100%;
-
-		min-height: 4em;
-
-		font-family: Signika;
-		font-size: inherit;
-
-		resize: vertical;
-	}
-
-	#comments {
-		display: grid;
-
-		gap: 0.25em;
 	}
 </style>
