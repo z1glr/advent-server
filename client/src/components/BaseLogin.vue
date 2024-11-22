@@ -41,16 +41,17 @@
 </script>
 
 <template>
-	<div id="content">
-		<h1>Login</h1>
-		<div v-if="wrong_password" id="wrong-password">
+	<div class="flex h-full max-w-60 flex-col justify-center gap-1">
+		<h1 class="pl-2 text-4xl">Login</h1>
+		<div v-if="wrong_password" class="text-red-500">
 			<h2>Login fehlgeschlagen</h2>
 			unbekannter Benutzer oder fasches Passwort
 		</div>
-		<form id="login">
-			<div id="credential-inputs">
+		<form class="flex w-full items-center gap-1">
+			<div class="flex flex-col gap-1">
 				<input
 					id="username"
+					class="w-full bg-teal-600 text-white hover:bg-teal-700 focus:bg-red-600 focus:hover:bg-red-500"
 					type="text"
 					name="name"
 					autocomplete="username"
@@ -61,6 +62,7 @@
 				/>
 				<input
 					id="password"
+					class="w-full bg-teal-600 text-white hover:bg-teal-700 focus:bg-red-600 focus:hover:bg-red-500"
 					type="password"
 					name="password"
 					autocomplete="current-password"
@@ -77,41 +79,4 @@
 	</div>
 </template>
 
-<style scoped>
-	#content {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25em;
-
-		max-width: 15em;
-		height: 100%;
-
-		justify-content: center;
-		align-items: center;
-
-		font-size: 1.5em;
-	}
-
-	#wrong-password {
-		color: var(--color-error);
-	}
-
-	#login {
-		width: 100%;
-
-		display: flex;
-		align-items: center;
-		gap: 0.25em;
-	}
-
-	#credential-inputs {
-		display: flex;
-		flex-direction: column;
-
-		gap: 0.25em;
-	}
-
-	#credential-inputs input {
-		width: 100%;
-	}
-</style>
+<style scoped></style>
