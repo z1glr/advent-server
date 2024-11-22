@@ -683,7 +683,7 @@ func patchPosts(c *fiber.Ctx) responseMessage {
 			logger.Info(err.Error())
 			response.Status = fiber.StatusBadRequest
 		} else {
-			if err := dbUpdate("posts", body, struct{ Pid int }{Pid: pid}); err != nil {
+			if err := dbUpdate("posts", *body, struct{ Pid int }{Pid: pid}); err != nil {
 				logger.Sugar().Error(err.Error())
 				response.Status = fiber.StatusInternalServerError
 			} else {
