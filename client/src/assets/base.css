@@ -19,11 +19,11 @@
 	--vt-c-blue-light: hsl(223, 57%, 55%);
 	--vt-c-blue-dark: hsl(223, 57%, 40%);
 
-	--vt-c-red: hsl(7, 86%, 53%);
+	--vt-c-red: #ee3820;
 	--vt-c-red-light: hsl(7, 86%, 58%);
 	--vt-c-red-dark: hsl(7, 86%, 48%);
 
-	--vt-c-green: hsl(177, 100%, 32%);
+	--vt-c-green: #00a39b;
 	--vt-c-green-light: hsl(177, 100%, 37%);
 	--vt-c-green-dark: hsl(177, 100%, 27%);
 
@@ -119,7 +119,6 @@
 *::before,
 *::after {
 	box-sizing: border-box;
-	font-weight: normal;
 }
 
 strong {

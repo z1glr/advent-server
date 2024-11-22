@@ -97,29 +97,37 @@
 </script>
 
 <template>
-	<div id="container">
+	<div class="flex flex-col items-center gap-1">
 		<h1>Users</h1>
-		<div id="add-user-wrapper">
-			<div id="user-exists-error" v-if="user_exists_error">
+		<div class="flex flex-col gap-2">
+			<div class="text-red-600" v-if="user_exists_error">
 				User with same username already exists
 			</div>
-			<div id="add-user">
-				<div id="add-user-inputs">
-					<span class="input-wrapper"
+			<div class="flex">
+				<div class="flex gap-4">
+					<span class="inline-flex items-baseline gap-2"
 						><span>username:</span
-						><input type="text" v-model="add_user_name" @keydown.enter="add_user()"
+						><input
+							type="text"
+							class="w-30 bg-teal-600 text-white"
+							v-model="add_user_name"
+							@keydown.enter="add_user()"
 					/></span>
-					<span class="input-wrapper"
+					<span class="inline-flex items-baseline gap-2"
 						><span>password:</span
-						><input type="text" v-model="add_user_password" @keydown.enter="add_user()"
+						><input
+							type="text"
+							class="w-30 bg-teal-600 text-white"
+							v-model="add_user_password"
+							@keydown.enter="add_user()"
 					/></span>
 				</div>
 				<BaseButton @click="add_user()"><FontAwesomeIcon :icon="faPlus" /></BaseButton>
 			</div>
 		</div>
-		<table id="users">
-			<thead>
-				<tr class="bar">
+		<table class="w-full">
+			<thead class="bg-stone-700 text-white">
+				<tr>
 					<th>UID</th>
 					<th>Name</th>
 					<th>password</th>
@@ -129,47 +137,40 @@
 				</tr>
 			</thead>
 			<tbody>
-				<tr class="content" v-for="user of users" :key="user.uid">
+				<tr class="odd:bg-stone-300 even:bg-stone-400" v-for="user of users" :key="user.uid">
 					<th>{{ user.uid }}</th>
 					<th>{{ user.name }}</th>
 					<th>
-						<div class="cell">
-							<input
-								v-model="user.password"
-								:disabled="user.name === 'admin' && Global.user.value?.uid !== user.uid"
-								type="text"
-								placeholder="new password"
-							/>
-						</div>
+						<input
+							v-model="user.password"
+							class="w-full bg-teal-600 text-white"
+							:disabled="user.name === 'admin' && Global.user.value?.uid !== user.uid"
+							type="text"
+							placeholder="new password"
+						/>
 					</th>
 					<th>
-						<div class="cell">
-							<BaseSlider
-								class="slider"
-								:disabled="user.name === 'admin' || user.uid === Global.user.value?.uid"
-								v-model="user.admin"
-							/>
-						</div>
+						<BaseSlider
+							class="mx-auto"
+							:disabled="user.name === 'admin' || user.uid === Global.user.value?.uid"
+							v-model="user.admin"
+						/>
 					</th>
 					<th>
-						<div class="cell">
-							<BaseButton
-								:disabled="user.name === 'admin' && Global.user.value?.uid !== user.uid"
-								@click="modify_user(user)"
-							>
-								<FontAwesomeIcon :icon="faFloppyDisk" />
-							</BaseButton>
-						</div>
+						<BaseButton
+							:disabled="user.name === 'admin' && Global.user.value?.uid !== user.uid"
+							@click="modify_user(user)"
+						>
+							<FontAwesomeIcon :icon="faFloppyDisk" />
+						</BaseButton>
 					</th>
 					<th>
-						<div class="cell">
-							<BaseButton
-								:disabled="user.name === 'admin' || user.uid === Global.user.value?.uid"
-								@click="delete_user(user)"
-							>
-								<FontAwesomeIcon :icon="faTrashCan" />
-							</BaseButton>
-						</div>
+						<BaseButton
+							:disabled="user.name === 'admin' || user.uid === Global.user.value?.uid"
+							@click="delete_user(user)"
+						>
+							<FontAwesomeIcon :icon="faTrashCan" />
+						</BaseButton>
 					</th>
 				</tr>
 			</tbody>
@@ -178,79 +179,11 @@
 </template>
 
 <style scoped>
-	#container {
-		display: flex;
-		flex-direction: column;
-
-		align-items: center;
-
-		gap: 0.25em;
-	}
-
-	#add-user-wrapper {
-		display: flex;
-		flex-direction: column;
-
-		gap: 0.5em;
-
-		font-size: 1em;
-	}
-
-	#add-user {
-		display: flex;
-	}
-
-	#user-exists-error {
-		color: var(--color-error);
-	}
-
-	#add-user-inputs {
-		display: flex;
-		gap: 1em;
-	}
-
-	.input-wrapper {
-		display: inline-flex;
-		align-items: baseline;
-		gap: 0.5em;
-	}
-
-	input[type="text"] {
-		width: 10em;
-	}
-
-	#users {
-		width: 100%;
-	}
-
-	tr.bar * {
-		font-weight: 600;
-
-		background-color: var(--color-text);
-		color: var(--color-background);
-	}
-
-	tr.content:nth-of-type(2n) {
-		background-color: var(--color-off-disabled);
-	}
-
-	tr.content:nth-of-type(2n + 1) {
-		background-color: var(--color-off-hover);
-	}
-
 	th {
 		padding: 0.25em;
 	}
 
-	th > div.cell {
-		width: 100%;
-
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	th input[type="text"] {
-		flex: 1;
+	tbody th {
+		font-weight: normal;
 	}
 </style>
